@@ -1,0 +1,12 @@
+[project]
+name = "automatedmodeling"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.10.11"
+dependencies = [
+    "jupyter>=1.1.1",
+    "optbinning>=0.20.1",
+    "scikit-learn>=1.6.1",
+    "toad>=0.1.5",
+]
