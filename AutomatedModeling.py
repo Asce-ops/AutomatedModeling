@@ -352,3 +352,11 @@ class AutomatedModeling:
         self.fit(used_features=used_features, model_score=model_score) # 拟合评分卡
         evaluation: Dict[str, float] = self.evaluate(n_bins=n_bins) # 模型评价指标
         print(f"训练集上 KS 值为：{evaluation['train_ks']}，AUC 值为：{evaluation['train_auc']}；验证集上 KS 值为：{evaluation['validation_ks']}，AUC 值为 {evaluation['validation_auc']}；测试集上 KS 值为：{evaluation['oot_ks']}，AUC 值为 {evaluation['oot_auc']}；模型分的 PSI 为 {evaluation['model_psi']}")
+
+    def get_feature_bin_score(self) -> Dict[str, Dict[str, float]]:
+        """获取入模特征各个区间段到评分的映射
+
+        Returns:
+            Dict[str, Dict[str, float]]: 入模特征各个区间段到评分的映射
+        """
+        return self.bins_score
