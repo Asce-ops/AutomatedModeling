@@ -227,6 +227,14 @@ class AutomatedModeling:
         self.data_woe[self.score] = scoreCard.predict(X=self.data)
 
     def calculate_model_score_psi(self, n_bins: int = 50) -> float:
+        """计算模型分离散化后的 PSI
+
+        Args:
+            n_bins (int, optional): 计算模型分 PSI 时的分箱个数. Defaults to 50.
+
+        Returns:
+            float: 模型分离散化后在训练集和测试集上的 PSI
+        """
         tmp: DataFrame = self.data_woe[[self.is_train, self.score]]
         tmp[f"{self.score}_bin"] = pd.qcut(x=tmp[self.score], q=n_bins, duplicates="drop")
         result: float = PSI(test=tmp[tmp[self.is_train]==0][f"{self.score}_bin"], base=tmp[tmp[self.is_train]==1][f"{self.score}_bin"]) # type: ignore
@@ -340,6 +348,21 @@ class AutomatedModeling:
             model_score: str = "model_score",
             n_bins: int = 50
             ) -> None:
+        """自动建模的主方法
+
+        Args:
+            split_time (date): 划分 train 和 oot 的边界日期
+            split_validation_set (bool, optional): 是否要在 train 中随机划分 validation. Defaults to False.
+            validation_pct (float, optional): 验证集占训练集的比例. Defaults to 0.2.
+            iv (float, optional): 初筛时的 iv 阈值. Defaults to 0.02.
+            corr (float, optional): 初筛时的相关系数阈值. Defaults to 0.7.
+            psi_threshold (float, optional): 剔除不稳定变量时的 PSI 阈值. Defaults to 0.1.
+            estimator (str, optional): 用于拟合的模型，["ols" | "lr" | "lasso" | "ridge"]. Defaults to "ols".
+            direction (str, optional): 逐步回归的方向，["forward" | "backward" | "both"]. Defaults to "both".
+            criterion (str, optional): 评判标准，["aic" | "bic" | "ks" | "auc"]. Defaults to "aic".
+            model_score (str, optional): 模型分字段命名. Defaults to "model_score".
+            n_bins (int, optional): 计算模型分 PSI 时的分箱个数. Defaults to 50.
+        """
         self.split_train_oot(split_time=split_time, split_validation_set=split_validation_set, validation_pct=validation_pct) # 划分训练集、验证集和测试集
         print(f"训练集有 {self.train.shape[0]} 条样本，验证集有 {self.validation.shape[0]} 条样本，测试集有 {self.oot.shape[0]} 条样本")
         initial_selected: List[str] = self.initial_screening(iv=iv, corr=corr) # 原始特征信息价值和相关性初筛
