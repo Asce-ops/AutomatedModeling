@@ -203,10 +203,10 @@ class AutomatedModeling:
                                     criterion=criterion,
                                     return_drop=False
                                 ) # type: ignore
-        self.used_features = selected.columns.tolist()
+        used_features: List[str] = selected.columns.tolist()
 
-        self.used_features.remove(self.target)
-        return self.used_features
+        used_features.remove(self.target)
+        return used_features
     
     def fit(self, used_features: List[str], model_score: str = "model_score") -> None:
         """拟合评分卡
@@ -215,6 +215,7 @@ class AutomatedModeling:
             used_features (List[str]): 入模变量
             model_score (str, optional): 模型分字段命名. Defaults to "model_score".
         """
+        self.used_features = used_features
         self.scoreCard = ScoreCard(
                                     combiner=self.combiner,
                                     transer=self.transformer,
