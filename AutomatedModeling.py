@@ -15,7 +15,7 @@ from optbinning import OptimalBinning
 from numpy import ndarray
 from matplotlib import pyplot as plt
 from seaborn import histplot 
-plt.rcParams["font.family"] = "SimHei" # 替换为你选择的字体
+plt.rcParams["font.family"] = "SimHei" # 替换为你选择的字体（否则绘图中可能无法正常显示中文）
 
 
 class AutomatedModeling:
@@ -51,7 +51,7 @@ class AutomatedModeling:
         self.bins_score: Dict[str, Dict[str, float]] # 特征取值映射为分数
         self.score: str # 模型分字段
         self.evaluation: Dict[str, float]
-        self.week: str = "week" # self.time 所在周的周一
+        self.week: str = f"{self.time}_week" # self.time 所在周的周一
 
     def split_train_oot(self, split_time: date, split_validation_set: bool = False, validation_pct: float = 0.2) -> None:
         """划分训练集和测试集（如不划分验证集则默认将测试集复制一份作为验证集）
@@ -150,7 +150,8 @@ class AutomatedModeling:
 
         self.combiner.set_rules(map=binning_rules, reset=True)
 
-        self.data_bin = self.combiner.transform(X=self.data[self.latent_features+self.not_features+[self.target, self.is_train]], labels=True) # type: ignore
+        self.data_bin = self.combiner.transform(X=self.data[self.latent_features+self.not_features+[self.target, self.is_train]], labels=True) # type: ignore # 根据分箱器对数据进行分箱
+        self.transformer.fit(X=self.data_bin[self.data_bin[self.is_train]==1], y=self.data_bin[self.data_bin[self.is_train]==1][self.target], exclude=self.not_features+[self.target, self.is_train]) # 实例化 ScoreCard 对象需传入训练好的 WOETransformer 对象
 
     def iv_screening_after_woe(self, selected_features: List[str], iv: float = 0.02) -> List[str]:
         """剔除离散化后 iv 值较低的变量
@@ -180,7 +181,7 @@ class AutomatedModeling:
         stable_features: List[str] = selected_features_bin_psi[selected_features_bin_psi < psi_threshold].index.to_list()
         return stable_features
     
-    def stepwise_after_WOETransformer(self, selected_features: List[str], estimator: str = "ols", direction: str = "both", criterion: str = "aic") -> List[str]:
+    def stepwise_after_woe_transformer(self, selected_features: List[str], estimator: str = "ols", direction: str = "both", criterion: str = "aic") -> List[str]:
         """对 WOE 变换后的数据逐步回归，确定最终的入模变量
 
         Args:
@@ -212,8 +213,6 @@ class AutomatedModeling:
             used_features (List[str]): 入模变量
             model_score (str, optional): 模型分字段命名. Defaults to "model_score".
         """
-        self.transformer.fit(X=self.data_bin[self.data_bin[self.is_train]==1], y=self.data_bin[self.data_bin[self.is_train]==1][self.target], exclude=self.not_features+[self.target])
-
         scoreCard: ScoreCard = ScoreCard(
                                     combiner=self.combiner,
                                     transer=self.transformer,
@@ -427,7 +426,7 @@ class AutomatedModeling:
         print(f"从潜在入模变量中剔除不稳定变量后剩余 {len(stable_features)} 个变量，分别是 {stable_features}")
         selected_features: List[str] = self.iv_screening_after_woe(selected_features=stable_features, iv=woe_iv) # 从离散化后稳定性较好的变量中再剔除 iv 值较低的变量
         print(f"从离散化后稳定性较好的变量中再剔除 iv 值较低的变量后剩余 {len(selected_features)} 个变量，分别是 {selected_features}")
-        used_features: List[str] = self.stepwise_after_WOETransformer(selected_features=selected_features, estimator=estimator, direction=direction, criterion=criterion) # 逐步回顾确定最终的入模变量
+        used_features: List[str] = self.stepwise_after_woe_transformer(selected_features=selected_features, estimator=estimator, direction=direction, criterion=criterion) # 逐步回顾确定最终的入模变量
         print(f"经逐步回归确定入模变量共 {len(used_features)} 个，分别是 {used_features}")
         self.fit(used_features=used_features, model_score=model_score) # 拟合评分卡
         evaluation: Dict[str, float] = self.evaluate(n_bins=n_bins) # 模型评价指标
@@ -441,6 +440,47 @@ class AutomatedModeling:
         """
         return self.bins_score
     
-    def export_model(self) -> None:
+    def export_model(self, path: str) -> None:
         """将模型导出为 PMML 格式"""
         pass
+
+    def get_binning_rules(self, selected_features: List[str]) -> Dict[str, List[float]]:
+        """查看潜在入模变量或其子集当前的分箱切割点
+
+        Args:
+            selected_features (List[str]): 潜在入模变量或其子集
+
+        Raises:
+            ValueError: 未对特征进行分箱
+
+        Returns:
+            Dict[str, List[float]]: 待查看变量的分箱切割点
+        """
+        result: Dict[str, List[float]] = {}
+        binning_rules: Dict[str, List[float]] = self.combiner.export() # 当前所有潜在入模变量的分箱切割点
+        for col in selected_features:
+            if col in self.latent_features:
+                result[col] = binning_rules[col]
+            else:
+                raise ValueError(f"{col} 不是潜在的入模变量，未对其进行分箱")
+        return result
+
+    def adjust_binning_rules(self, rules: Dict[str, List[float]]) -> None:
+        """手动调整分箱
+
+        Args:
+            rules (Dict[str, List[float]]): 指定的分箱规则
+        """
+        self.combiner.update(rules=rules)
+        self.update_woe_transform() # 更新对应的 self.data_bin, self.data_woe, self.train_woe, self.validation_woe, self.oot_woe
+
+    def update_woe_transform(self) -> None:
+        """根据分箱器进行 WOE 变换"""
+        self.data_bin = self.combiner.transform(X=self.data[self.latent_features+self.not_features+[self.target, self.is_train]], labels=True) # type: ignore # 根据分箱器对数据进行分箱
+        self.transformer.fit(X=self.data_bin[self.data_bin[self.is_train]==1], y=self.data_bin[self.data_bin[self.is_train]==1][self.target], exclude=self.not_features+[self.target, self.is_train])
+        self.data_woe = self.transformer.transform(X=self.data_bin[self.latent_features+self.not_features+[self.target, self.is_train]]) # type: ignore
+        self.train_woe = self.data_woe[self.data_woe[self.is_train] == 1]
+        self.validation_woe = self.data_woe[self.data_woe[self.is_train] == 2]
+        self.oot_woe = self.data_woe[self.data_woe[self.is_train] == 0]
+    
+    
