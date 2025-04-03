@@ -8,5 +8,6 @@ dependencies = [
     "jupyter>=1.1.1",
     "optbinning>=0.20.1",
     "scikit-learn>=1.6.1",
+    "sklearn2pmml>=0.116.2",
     "toad>=0.1.5",
 ]

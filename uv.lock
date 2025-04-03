@@ -124,6 +124,7 @@ dependencies = [
     { name = "jupyter" },
     { name = "optbinning" },
     { name = "scikit-learn" },
+    { name = "sklearn2pmml" },
     { name = "toad" },
 ]
 
@@ -132,6 +133,7 @@ requires-dist = [
     { name = "jupyter", specifier = ">=1.1.1" },
     { name = "optbinning", specifier = ">=0.20.1" },
     { name = "scikit-learn", specifier = ">=1.6.1" },
+    { name = "sklearn2pmml", specifier = ">=0.116.2" },
     { name = "toad", specifier = ">=0.1.5" },
 ]
 
@@ -528,6 +530,15 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/0f/d5/c66da9b79e5bdb124974bfe172b4daf3c984ebd9c2a06e2b8a4dc7331c72/defusedxml-0.7.1.tar.gz", hash = "sha256:1bb3032db185915b62d7c6209c5a8792be6a32ab2fedacc84e01b52c51aa3e69", size = 75520 }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/07/6c/aa3f2f849e01cb6a001cd8554a88d4c77c5c1a31c95bdf1cf9301e6d9ef4/defusedxml-0.7.1-py2.py3-none-any.whl", hash = "sha256:a352e7e428770286cc899e2542b6cdaedb2b4953ff269a210103ec58f6198a61", size = 25604 },
+]
+
+[[package]]
+name = "dill"
+version = "0.3.9"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/70/43/86fe3f9e130c4137b0f1b50784dd70a5087b911fe07fa81e53e0c4c47fea/dill-0.3.9.tar.gz", hash = "sha256:81aa267dddf68cbfe8029c42ca9ec6a4ab3b22371d1c450abc54422577b4512c", size = 187000 }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/46/d1/e73b6ad76f0b1fb7f23c35c6d95dbc506a9c8804f43dda8cb5b0fa6331fd/dill-0.3.9-py3-none-any.whl", hash = "sha256:468dff3b89520b474c0397703366b7b95eebe6303f108adf9b19da1f702be87a", size = 119418 },
 ]
 
 [[package]]
@@ -2300,6 +2311,21 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/94/e7/b2c673351809dca68a0e064b6af791aa332cf192da575fd474ed7d6f16a2/six-1.17.0.tar.gz", hash = "sha256:ff70335d468e7eb6ec65b95b99d3a2836546063f63acc5171de367e834932a81", size = 34031 }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/b7/ce/149a00dd41f10bc29e5921b496af8b574d8413afcd5e30dfa0ed46c2cc5e/six-1.17.0-py2.py3-none-any.whl", hash = "sha256:4721f391ed90541fddacab5acf947aa0d3dc7d27b2e1e8eda2be8970586c3274", size = 11050 },
+]
+
+[[package]]
+name = "sklearn2pmml"
+version = "0.116.2"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "dill" },
+    { name = "joblib" },
+    { name = "pandas" },
+    { name = "scikit-learn" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/f3/82/0f5664c5bd0517e70efb3fb513bb84fe3e5cba8ef177401f0088f25f224b/sklearn2pmml-0.116.2.tar.gz", hash = "sha256:f3bec1e650042fa9f4fa9029f876892e1b92bbe0502b793725bf512bcca7e7c3", size = 7357188 }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/95/76/4e73eeb0709713f54c620622ca5487ceef955b44a546b921fd5b6f0e9ac2/sklearn2pmml-0.116.2-py3-none-any.whl", hash = "sha256:53bdaae95ee53fa7913fac4c3aabd2d25302ba3ccc950f8ce4ab48a23826e31a", size = 7370898 },
 ]
 
 [[package]]
