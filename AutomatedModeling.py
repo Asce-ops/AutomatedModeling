@@ -23,13 +23,13 @@ class AutomatedModeling:
     seed(a=42) # 固定随机种子
 
     def __init__(self, data: DataFrame, target: str, time: str, not_features: List[str]) -> None:
-        """_summary_
+        """传入规定格式的数据以实例化 AutomatedModeling 对象
 
         Args:
-            data (DataFrame): _description_
+            data (DataFrame): 样本数据
             target (str): 字段值为 0-1 变量
             time (str): 字段值为 date 对象
-            not_features (List[str]): _description_
+            not_features (List[str]): 除相应变量外的其他非特征字段（如时间、订单号、包名等）
         """
         self.data: DataFrame = data.reset_index(drop=True, inplace=False) # 样本
         self.target: str = target # 响应变量
