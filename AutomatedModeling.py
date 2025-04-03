@@ -1,6 +1,7 @@
 from typing import List, Dict
 from datetime import date, timedelta
 from random import seed
+from pickle import dump
 import warnings
 warnings.filterwarnings(action="ignore") # 忽略所有警告
 
@@ -48,6 +49,7 @@ class AutomatedModeling:
         self.latent_features: List[str] # （经过初筛后）潜在的入模变量
         self.used_features: List[str] # 入模变量
         self.transformer: WOETransformer = WOETransformer()
+        self.scoreCard: ScoreCard # 评分卡对象
         self.bins_score: Dict[str, Dict[str, float]] # 特征取值映射为分数
         self.score: str # 模型分字段
         self.evaluation: Dict[str, float]
@@ -213,7 +215,7 @@ class AutomatedModeling:
             used_features (List[str]): 入模变量
             model_score (str, optional): 模型分字段命名. Defaults to "model_score".
         """
-        scoreCard: ScoreCard = ScoreCard(
+        self.scoreCard = ScoreCard(
                                     combiner=self.combiner,
                                     transer=self.transformer,
                                     base_score=600,
@@ -221,11 +223,11 @@ class AutomatedModeling:
                                     pdo=20,
                                     rate=2
                                 )
-        scoreCard.fit(X=self.train_woe[used_features], y=self.train_woe[self.target])
-        self.bins_score = scoreCard.export()
+        self.scoreCard.fit(X=self.train_woe[used_features], y=self.train_woe[self.target])
+        self.bins_score = self.scoreCard.export()
 
         self.score = model_score
-        self.data_woe[self.score] = scoreCard.predict(X=self.data) # 传入原始数据而非 WOE 变换后的数据
+        self.data_woe[self.score] = self.scoreCard.predict(X=self.data) # 传入原始数据而非 WOE 变换后的数据
 
     def calculate_model_score_psi(self, n_bins: int = 50) -> float:
         """计算模型分离散化后的 PSI
@@ -441,8 +443,13 @@ class AutomatedModeling:
         return self.bins_score
     
     def export_model(self, path: str) -> None:
-        """将模型导出为 PMML 格式"""
-        pass
+        """将模型以二进制导出为 pkl 格式
+
+        Args:
+            path (str): 导出路径
+        """
+        with open(file=path, mode="wb") as f:
+            dump(obj=self.scoreCard, file=f)
 
     def get_binning_rules(self, selected_features: List[str]) -> Dict[str, List[float]]:
         """查看潜在入模变量或其子集当前的分箱切割点
@@ -482,5 +489,3 @@ class AutomatedModeling:
         self.train_woe = self.data_woe[self.data_woe[self.is_train] == 1]
         self.validation_woe = self.data_woe[self.data_woe[self.is_train] == 2]
         self.oot_woe = self.data_woe[self.data_woe[self.is_train] == 0]
-    
-    
