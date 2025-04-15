@@ -17,13 +17,14 @@ from numpy import ndarray
 from matplotlib import pyplot as plt
 from seaborn import histplot 
 plt.rcParams["font.family"] = "SimHei" # 替换为你选择的字体（否则绘图中可能无法正常显示中文）
+# plt.rcParams["font.family"] = "QuanYi Zen Hei Mono"  # 替换为你选择的字体
 
 
-class AutomatedModeling:
+class AutomatedScoreCard:
     seed(a=42) # 固定随机种子
 
     def __init__(self, data: DataFrame, target: str, time: str, not_features: List[str]) -> None:
-        """传入规定格式的数据以实例化 AutomatedModeling 对象
+        """传入规定格式的数据以实例化 AutomatedScoreCard 对象
 
         Args:
             data (DataFrame): 样本数据
@@ -84,10 +85,11 @@ class AutomatedModeling:
         self.oot.reset_index(drop=True, inplace=True)
         self.data.reset_index(drop=True, inplace=True)
 
-    def initial_screening(self, iv: float = 0.02, corr: float = 0.7) -> List[str]:
+    def initial_screening(self, empty: float = 0.9, iv: float = 0.02, corr: float = 0.7) -> List[str]:
         """原始数据 IV 和相关性初筛
 
         Args:
+            empty (float, optional): 缺失值阈值. Defaults to 0.9.
             iv (float, optional): iv 最低值. Defaults to 0.02.
             corr (float, optional): 相关系数最高值. Defaults to 0.7.
 
@@ -97,6 +99,7 @@ class AutomatedModeling:
         selected: DataFrame = select(
                                     frame=self.train,
                                     target=self.target,
+                                    empty=empty,
                                     iv=iv,
                                     corr=corr,
                                     return_drop=False, # 是否返回被删除的变量列
@@ -166,6 +169,20 @@ class AutomatedModeling:
             List[str]: iv 值超过指定阈值的变量
         """
         distinction: DataFrame = quality(dataframe=self.train_woe[selected_features+[self.target]], target=self.target, iv_only=True)
+        result: List[str] = distinction[distinction["iv"] >= iv].index.to_list()
+        return result
+    
+    def iv_screening_after_woe_in_oot(self, selected_features: List[str], iv: float = 0.02) -> List[str]:
+        """剔除离散化后在 oot 上 iv 值较低的变量
+
+        Args:
+            selected_features (List[str]): 潜在的入模变量
+            iv (float, optional): iv 阈值. Defaults to 0.02.
+
+        Returns:
+            List[str]: iv 值超过指定阈值的变量
+        """
+        distinction: DataFrame = quality(dataframe=self.oot_woe[selected_features+[self.target]], target=self.target, iv_only=True)
         result: List[str] = distinction[distinction["iv"] >= iv].index.to_list()
         return result
 
@@ -276,15 +293,34 @@ class AutomatedModeling:
             train_validation_oot (int, optional): {1: "训练集", 0: "测试集", 2: "验证集"}. Defaults to 0.
             n_bins (int, optional): 分箱数量. Defaults to 10.
 
+        Raises:
+            ValueError: 参数传值错误
+
         Returns:
             DataFrame: 模型分箱后在各个箱中的效果
         """
+        if train_validation_oot == 0:
+            label: str = "oot"
+        elif train_validation_oot == 1:
+            label: str = "train"
+        elif train_validation_oot == 2:
+            label: str = "validation"
+        else:
+            raise ValueError("参数 train_validation_oot 只传入 0 或 1 或 2")
+        
         result: DataFrame = KS_bucket(
                                 score=self.data_woe[self.data_woe[self.is_train]==train_validation_oot][self.score], # 分箱变量
                                 target=self.data_woe[self.data_woe[self.is_train]==train_validation_oot][self.target], # 目标变量
                                 bucket=n_bins, # 分箱个数，默认为10
-                                method="quantile" # 默认等频分箱，{'quantile':等频分箱, 'step':等距分箱}
+                                method="quantile" # 默认等频分箱，{"quantile": 等频分箱, "step": 等距分箱}
                             ) # type: ignore
+        
+        plt.plot(result["min"], result["bad_rate"], marker="o", label=label)
+        plt.xlabel(xlabel=f"{self.score}")
+        plt.ylabel(ylabel="bad_rate")
+        plt.legend()
+        plt.show()
+        
         return result
     
     def plot_model_score_distribution(self) -> None:
@@ -295,29 +331,29 @@ class AutomatedModeling:
             kde=True, # 是否绘制核密度图
             color="red",
             bins=50,
-            label="训练集上的模型分分布",
+            label=f"{self.score}_distribution in train",
             stat="density" # 统计方法，频率还是频数
         )
         histplot(
             x=self.data_woe[self.data_woe[self.is_train]==0][self.score], 
             kde=True, 
-            color="yellow",
+            color="green",
             bins=50,
-            label="测试集上的模型分分布",
+            label=f"{self.score}_distribution in oot",
             stat="density"
         )
         histplot(
             x=self.data_woe[self.data_woe[self.is_train]==2][self.score], 
             kde=True, 
-            color="green",
+            color="yellow",
             bins=50,
-            label="验证集上的模型分分布",
+            label=f"{self.score}_distribution in validation",
             stat="density"
         )
         plt.legend()
-        plt.title(label="训练集、验证集和测试集上模型分分布对比")
-        plt.xlabel(xlabel="模型分")
-        plt.ylabel(ylabel="频率")
+        plt.title(label=f"Comparison {self.score}_distribution in train, validation and oot")
+        plt.xlabel(xlabel=f"{self.score}")
+        plt.ylabel(ylabel="frequency rate")
         plt.show()
 
     def monotonic_trend_bin_plot(self, selected_features: List[str], train_validation_oot: int = 1) -> None:
@@ -332,13 +368,13 @@ class AutomatedModeling:
             ValueError: 未对特征进行分箱
         """
         if train_validation_oot == 0:
-            label: str = "validation"
+            label: str = "oot"
         elif train_validation_oot == 1:
             label: str = "train"
         elif train_validation_oot == 2:
-            label: str = "oot"
+            label: str = "validation"
         else:
-            raise ValueError(f"参数 {train_validation_oot} 只能传入 0 或 1 或 2")
+            raise ValueError(f"参数 train_validation_oot 只能传入 0 或 1 或 2")
 
         for col in selected_features:
             if col in self.latent_features:
@@ -384,7 +420,7 @@ class AutomatedModeling:
             elif all_train_validation_oot == 2:
                 label: str = "validation"
             else:
-                raise ValueError(f"参数 {all_train_validation_oot} 只能传入 -1 或 0 或 1 或 2")
+                raise ValueError(f"参数 all_train_validation_oot 只能传入 -1 或 0 或 1 或 2")
             data_bin: DataFrame = self.data_bin[self.data_bin[self.is_train]==all_train_validation_oot]
         
         for feature in selected_features:
@@ -395,7 +431,7 @@ class AutomatedModeling:
                 raise ValueError(f"{feature} 不是潜在的入模变量，未对其进行分箱")
 
     def run(self, split_time: date, split_validation_set: bool = False, validation_pct: float = 0.2,
-            origin_iv: float = 0.02, corr: float = 0.7,
+            empty: float = 0.9, origin_iv: float = 0.02, corr: float = 0.7,
             max_n_bins: int = 5,
             psi_threshold: float = 0.1,
             woe_iv: float = 0.02,
@@ -409,6 +445,7 @@ class AutomatedModeling:
             split_time (date): 划分 train 和 oot 的边界日期
             split_validation_set (bool, optional): 是否要在 train 中随机划分 validation. Defaults to False.
             validation_pct (float, optional): 验证集占训练集的比例. Defaults to 0.2.
+            empty (float, optional): 初筛时的缺失值阈值. Defaults to 0.9.
             origin_iv (float, optional): 初筛时的 iv 阈值. Defaults to 0.02.
             corr (float, optional): 初筛时的相关系数阈值. Defaults to 0.7.
             max_n_bins (int, optional): 潜在入模变量单调分箱时最大分箱个数
@@ -421,13 +458,14 @@ class AutomatedModeling:
             n_bins (int, optional): 计算模型分 PSI 时的分箱个数. Defaults to 50.
         """
         self.split_train_oot(split_time=split_time, split_validation_set=split_validation_set, validation_pct=validation_pct) # 划分训练集、验证集和测试集
-        print(f"训练集有 {self.train.shape[0]} 条样本，验证集有 {self.validation.shape[0]} 条样本，测试集有 {self.oot.shape[0]} 条样本")
-        self.initial_screening(iv=origin_iv, corr=corr) # 原始特征信息价值和相关性初筛
+        print(f"训练集有 {self.train.shape[0]} 条样本，bad_rate 为 {self.train[self.target].mean()}；验证集有 {self.validation.shape[0]} 条样本，bad_rate 为 {self.validation[self.target].mean()}；测试集有 {self.oot.shape[0]} 条样本，bad_rate 为 {self.oot[self.target].mean()}")
+        self.initial_screening(empty=empty, iv=origin_iv, corr=corr) # 原始特征信息价值和相关性初筛
         print(f"原始数据 IV 和相关性初筛后剩余 {len(self.latent_features)} 个变量，分别是 {self.latent_features}")
         self.monotonic_trend_binning(max_n_bins=max_n_bins) # 将潜在入模变量进行单调分箱并进行 WOE 变换
         stable_features: List[str] = self.eliminate_unstable_features(selected_features=self.latent_features, psi_threshold=psi_threshold) # 从潜在入模变量中剔除稳定性较差的变量
         print(f"从潜在入模变量中剔除不稳定变量后剩余 {len(stable_features)} 个变量，分别是 {stable_features}")
         selected_features: List[str] = self.iv_screening_after_woe(selected_features=stable_features, iv=woe_iv) # 从离散化后稳定性较好的变量中再剔除 iv 值较低的变量
+        selected_features: List[str] = self.iv_screening_after_woe_in_oot(selected_features=selected_features, iv=woe_iv) # 把在 oot 上区分能力较差的变量也剔除掉
         print(f"从离散化后稳定性较好的变量中再剔除 iv 值较低的变量后剩余 {len(selected_features)} 个变量，分别是 {selected_features}")
         used_features: List[str] = self.stepwise_after_woe_transformer(selected_features=selected_features, estimator=estimator, direction=direction, criterion=criterion) # 逐步回顾确定最终的入模变量
         print(f"经逐步回归确定入模变量共 {len(used_features)} 个，分别是 {used_features}")
@@ -490,3 +528,15 @@ class AutomatedModeling:
         self.train_woe = self.data_woe[self.data_woe[self.is_train] == 1]
         self.validation_woe = self.data_woe[self.data_woe[self.is_train] == 2]
         self.oot_woe = self.data_woe[self.data_woe[self.is_train] == 0]
+
+    def predict(self, X: DataFrame) -> Series:
+        """对新数据进行预测
+
+        Args:
+            X (DataFrame): 原始数据
+
+        Returns:
+            Series: 模型分
+        """
+        model_score: Series = pd.Series(data=self.scoreCard.predict(X=X)) # type: ignore # 传入原始数据而非 WOE 变换后的数据
+        return model_score

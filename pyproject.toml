@@ -10,4 +10,5 @@ dependencies = [
     "scikit-learn>=1.6.1",
     "sklearn2pmml>=0.116.2",
     "toad>=0.1.5",
+    "xgboost>=3.0.0",
 ]
