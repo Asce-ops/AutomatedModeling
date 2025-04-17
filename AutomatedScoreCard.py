@@ -540,3 +540,18 @@ class AutomatedScoreCard:
         """
         model_score: Series = pd.Series(data=self.scoreCard.predict(X=X)) # type: ignore # 传入原始数据而非 WOE 变换后的数据
         return model_score
+
+    def used_features_report(self, original_data: bool = False) -> DataFrame:
+        """输出入模变量的 iv、psi 和分箱及其对应的 woe 值
+
+        Args:
+            original_data (bool, optional): 是否使用入模变量的原始值. Defaults to False.
+
+        Returns:
+            DataFrame: 入模变量的 iv、psi 和分箱及其对应的 woe 值
+        """
+        iv: DataFrame = quality(dataframe=self.data_woe[self.used_features+[self.target]], target=self.target, iv_only=False)
+    
+
+
+
