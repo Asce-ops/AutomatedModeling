@@ -158,45 +158,47 @@ class AutomatedScoreCard:
         self.data_bin = self.combiner.transform(X=self.data[self.latent_features+self.not_features+[self.target, self.is_train]], labels=True) # type: ignore # 根据分箱器对数据进行分箱
         self.transformer.fit(X=self.data_bin[self.data_bin[self.is_train]==1], y=self.data_bin[self.data_bin[self.is_train]==1][self.target], exclude=self.not_features+[self.target, self.is_train]) # 实例化 ScoreCard 对象需传入训练好的 WOETransformer 对象
 
-    def iv_screening_after_woe(self, selected_features: List[str], iv: float = 0.02) -> List[str]:
+    def iv_screening_after_woe(self, selected_features: List[str], iv: float = 0.02, train_validation_oot: int = 1) -> List[str]:
         """剔除离散化后 iv 值较低的变量
 
         Args:
             selected_features (List[str]): 潜在的入模变量
             iv (float, optional): iv 阈值. Defaults to 0.02.
+            train_validation_oot (int, optional): {1: "训练集", 0: "测试集", 2: "验证集"}. Defaults to 1.
+
+        Raises:
+            ValueError: 参数传值错误
 
         Returns:
             List[str]: iv 值超过指定阈值的变量
         """
-        distinction: DataFrame = quality(dataframe=self.train_woe[selected_features+[self.target]], target=self.target, iv_only=True)
-        result: List[str] = distinction[distinction["iv"] >= iv].index.to_list()
-        return result
-    
-    def iv_screening_after_woe_in_oot(self, selected_features: List[str], iv: float = 0.02) -> List[str]:
-        """剔除离散化后在 oot 上 iv 值较低的变量
-
-        Args:
-            selected_features (List[str]): 潜在的入模变量
-            iv (float, optional): iv 阈值. Defaults to 0.02.
-
-        Returns:
-            List[str]: iv 值超过指定阈值的变量
-        """
-        distinction: DataFrame = quality(dataframe=self.oot_woe[selected_features+[self.target]], target=self.target, iv_only=True)
+        if train_validation_oot == 0:
+            data: DataFrame = self.oot_woe
+        elif train_validation_oot == 1:
+            data: DataFrame = self.train_woe
+        elif train_validation_oot == 2:
+            data: DataFrame = self.validation_woe
+        else:
+            raise ValueError("参数 train_validation_oot 只能传入 0 或 1 或 2")
+        distinction: DataFrame = quality(dataframe=data[selected_features+[self.target]], target=self.target, iv_only=True)
         result: List[str] = distinction[distinction["iv"] >= iv].index.to_list()
         return result
 
-    def eliminate_unstable_features(self, selected_features: List[str], psi_threshold: float = 0.1) -> List[str]:
+    def eliminate_unstable_features(self, selected_features: List[str], psi_threshold: float = 0.1, psi_original: bool = True) -> List[str]:
         """剔除分箱后稳定性较差的变量
 
         Args:
             selected_features (List[str]): 潜在的入模变量
             psi_threshold (float, optional): psi筛选的阈值. Defaults to 0.1.
+            psi_original (bool, optional): 使用原始数据还是离散化后的数据（True: 原始数据, False: 离散化后的数据）. Defaults to True.
 
         Returns:
             List[str]: 稳定性较好的变量
         """
-        selected_features_bin_psi: Series = PSI(test=self.train_woe[selected_features], base=self.oot_woe[selected_features]) # type: ignore
+        if psi_original:
+            selected_features_bin_psi: Series = PSI(test=self.train[selected_features], base=self.oot[selected_features]) # type: ignore
+        else:
+            selected_features_bin_psi: Series = PSI(test=self.train_woe[selected_features], base=self.oot_woe[selected_features]) # type: ignore
         stable_features: List[str] = selected_features_bin_psi[selected_features_bin_psi < psi_threshold].index.to_list()
         return stable_features
     
@@ -306,7 +308,7 @@ class AutomatedScoreCard:
         elif train_validation_oot == 2:
             label: str = "validation"
         else:
-            raise ValueError("参数 train_validation_oot 只传入 0 或 1 或 2")
+            raise ValueError("参数 train_validation_oot 只能传入 0 或 1 或 2")
         
         result: DataFrame = KS_bucket(
                                 score=self.data_woe[self.data_woe[self.is_train]==train_validation_oot][self.score], # 分箱变量
@@ -360,7 +362,7 @@ class AutomatedScoreCard:
         """潜在入模变量（或其子集）单调分箱结果可视化
 
         Args:
-            selected_features (List[str]): 潜在入模变量（或其子集）
+            selected_features (List[str]): 潜在入模变量或其子集
             train_validation_oot (int, optional):  {1: "训练集", 0: "测试集", 2: "验证集"}. Defaults to 1.
 
         Raises:
@@ -433,8 +435,8 @@ class AutomatedScoreCard:
     def run(self, split_time: date, split_validation_set: bool = False, validation_pct: float = 0.2,
             empty: float = 0.9, origin_iv: float = 0.02, corr: float = 0.7,
             max_n_bins: int = 5,
-            psi_threshold: float = 0.1,
-            woe_iv: float = 0.02,
+            psi_threshold: float = 0.1, psi_original: bool = True,
+            woe_iv: float = 0.02, eliminate_low_iv_oot: bool = True,
             estimator: str = "ols", direction: str = "both", criterion: str = "aic",
             model_score: str = "model_score",
             n_bins: int = 50
@@ -450,7 +452,9 @@ class AutomatedScoreCard:
             corr (float, optional): 初筛时的相关系数阈值. Defaults to 0.7.
             max_n_bins (int, optional): 潜在入模变量单调分箱时最大分箱个数
             psi_threshold (float, optional): 剔除不稳定变量时的 PSI 阈值. Defaults to 0.1.
+            psi_original (bool, optional): 使用原始数据还是离散化后的数据（True: 原始数据, False: 离散化后的数据）. Defaults to True.
             woe_iv (float, optional): 离散化后用 iv 值进行筛选时的 iv 阈值. Defaults to 0.02.
+            eliminate_low_iv_oot (bool, optional): 是否将离散化后测试集上 iv 值较低的变量也剔除. Defaults to True.
             estimator (str, optional): 用于拟合的模型，["ols" | "lr" | "lasso" | "ridge"]. Defaults to "ols".
             direction (str, optional): 逐步回归的方向，["forward" | "backward" | "both"]. Defaults to "both".
             criterion (str, optional): 评判标准，["aic" | "bic" | "ks" | "auc"]. Defaults to "aic".
@@ -462,10 +466,12 @@ class AutomatedScoreCard:
         self.initial_screening(empty=empty, iv=origin_iv, corr=corr) # 原始特征信息价值和相关性初筛
         print(f"原始数据 IV 和相关性初筛后剩余 {len(self.latent_features)} 个变量，分别是 {self.latent_features}")
         self.monotonic_trend_binning(max_n_bins=max_n_bins) # 将潜在入模变量进行单调分箱并进行 WOE 变换
-        stable_features: List[str] = self.eliminate_unstable_features(selected_features=self.latent_features, psi_threshold=psi_threshold) # 从潜在入模变量中剔除稳定性较差的变量
+        stable_features: List[str] = self.eliminate_unstable_features(selected_features=self.latent_features, psi_threshold=psi_threshold, psi_original=psi_original) # 从潜在入模变量中剔除稳定性较差的变量
         print(f"从潜在入模变量中剔除不稳定变量后剩余 {len(stable_features)} 个变量，分别是 {stable_features}")
-        selected_features: List[str] = self.iv_screening_after_woe(selected_features=stable_features, iv=woe_iv) # 从离散化后稳定性较好的变量中再剔除 iv 值较低的变量
-        selected_features: List[str] = self.iv_screening_after_woe_in_oot(selected_features=selected_features, iv=woe_iv) # 把在 oot 上区分能力较差的变量也剔除掉
+        # 从离散化后稳定性较好的变量中再剔除 iv 值较低的变量
+        selected_features: List[str] = self.iv_screening_after_woe(selected_features=stable_features, iv=woe_iv, train_validation_oot=1)
+        if eliminate_low_iv_oot: # 如果需要剔除离散化后测试集上 iv 值较低的变量
+            selected_features: List[str] = self.iv_screening_after_woe(selected_features=stable_features, iv=woe_iv, train_validation_oot=0)
         print(f"从离散化后稳定性较好的变量中再剔除 iv 值较低的变量后剩余 {len(selected_features)} 个变量，分别是 {selected_features}")
         used_features: List[str] = self.stepwise_after_woe_transformer(selected_features=selected_features, estimator=estimator, direction=direction, criterion=criterion) # 逐步回顾确定最终的入模变量
         print(f"经逐步回归确定入模变量共 {len(used_features)} 个，分别是 {used_features}")
@@ -541,17 +547,111 @@ class AutomatedScoreCard:
         model_score: Series = pd.Series(data=self.scoreCard.predict(X=X)) # type: ignore # 传入原始数据而非 WOE 变换后的数据
         return model_score
 
-    def used_features_report(self, original_data: bool = False) -> DataFrame:
-        """输出入模变量的 iv、psi 和分箱及其对应的 woe 值
+    def get_features_index_report(self, select_features: List[str]) -> DataFrame:
+        """输出变量的 iv、psi 等评价指标
 
         Args:
-            original_data (bool, optional): 是否使用入模变量的原始值. Defaults to False.
+            select_features (List[str]): 潜在入模变量或其子集
+
+        Raises:
+            ValueError: 未对特征进行分箱
 
         Returns:
-            DataFrame: 入模变量的 iv、psi 和分箱及其对应的 woe 值
+            DataFrame: 变量的 iv、psi 等评价指标
         """
-        iv: DataFrame = quality(dataframe=self.data_woe[self.used_features+[self.target]], target=self.target, iv_only=False)
+        # 计算 PSI
+        features_psi: List[float] = []
+        features_woe_psi: List[float] = []
+        features: List[str] = []
+        for col in select_features:
+            if col not in self.latent_features:
+                raise ValueError(f"{col} 不是潜在的入模变量，未对其进行分箱")
+            psi: float = PSI(test=self.train[col], base=self.oot[col]) # type: ignore
+            psi_woe: float = PSI(test=self.train_woe[col], base=self.oot_woe[col]) # type: ignore        
+            features_psi.append(psi)
+            features_woe_psi.append(psi_woe)
+            features.append(col)
+        features_psi_df: DataFrame = pd.DataFrame(data={"feature": features, "psi": features_psi, "woe_psi": features_woe_psi})
+
+        features_train_iv: DataFrame = quality(dataframe=self.train_woe[select_features+[self.target]], target=self.target, iv_only=False)
+        features_oot_iv: DataFrame = quality(dataframe=self.oot_woe[select_features+[self.target]], target=self.target, iv_only=False)
+        # 区分训练集和测试集的变量名        
+        name_train: Dict[str, str] = {col: f"{col}_train" for col in features_train_iv.columns}
+        name_oot: Dict[str, str] = {col: f"{col}_oot" for col in features_oot_iv.columns}
+        features_train_iv.rename(columns=name_train, inplace=True)
+        features_oot_iv.rename(columns=name_oot, inplace=True)
+        features_train_iv.reset_index(drop=False, inplace=True, names="feature")
+        features_oot_iv.reset_index(drop=False, inplace=True, names="feature")
+        features_iv: DataFrame = pd.merge(left=features_train_iv, right=features_oot_iv, how="left", on="feature")
+        
+        result: DataFrame = pd.merge(left=features_iv, right=features_psi_df, how="left", on="feature")
+        return result
     
+    def get_features_woe(self, select_features: List[str]) -> DataFrame:
+        """输出变量离散化后每箱对应的 woe 值和占比以及 bad_rate
 
+        Args:
+            select_features (List[str]): 潜在入模变量或其子集
 
+        Raises:
+            ValueError: 未对特征进行分箱
 
+        Returns:
+            DataFrame: 变量离散化后每箱对应的 woe 值和占比以及 bad_rate
+        """
+        export: Dict[str, Dict[str, float]] = self.transformer.export()
+        woe: DataFrame = pd.DataFrame(columns=["feature", "bin", "woe"])
+        for col in select_features:
+            if col not in self.latent_features:
+                raise ValueError(f"{col} 不是潜在的入模变量，未对其进行分箱")
+            tmp = pd.DataFrame(data={"feature": col, "bin": export[col].keys(), "woe": export[col].values()})
+            woe = pd.concat(objs=[woe, tmp], axis=0, ignore_index=True)
+        
+        woe["train_pct"] = woe.apply(
+                                        func=lambda x: self.data_bin[(self.data_bin[self.is_train]==1) & (self.data_bin[x["feature"]] == x["bin"])].shape[0] / self.data_bin[self.data_bin[self.is_train]==1].shape[0], 
+                                        axis=1
+                                    ) # type: ignore
+        woe["train_bad_rate"] = woe.apply(
+                                        func=lambda x: self.data_bin[(self.data_bin[self.is_train]==1) & (self.data_bin[x["feature"]] == x["bin"])][self.target].mean(), 
+                                        axis=1
+                                    ) # type: ignore
+        woe["oot_pct"] = woe.apply(
+                                    func=lambda x: self.data_bin[(self.data_bin[self.is_train]==0) & (self.data_bin[x["feature"]] == x["bin"])].shape[0] / self.data_bin[self.data_bin[self.is_train]==0].shape[0], 
+                                    axis=1
+                                ) # type: ignore
+        woe["oot_bad_rate"] = woe.apply(
+                                    func=lambda x: self.data_bin[(self.data_bin[self.is_train]==0) & (self.data_bin[x["feature"]] == x["bin"])][self.target].mean(), 
+                                    axis=1
+                                ) # type: ignore
+        return woe
+
+    def get_used_features_woe(self) -> DataFrame: # 其实就是 self.get_features_woe(select_features=self.used_features) 的结果多了一个 "score" 列，但非入模变量的分箱没有对应分数，所以单独实现一个方法
+        """输出入模变量离散化后每箱对应的 woe 值、占比、bad_rate 和对应分数
+
+        Returns:
+            DataFrame: 入模变量离散化后每箱对应的 woe 值、占比、bad_rate 和对应分数
+        """
+        export: Dict[str, Dict[str, float]] = self.transformer.export()
+        bin_score: Dict[str, Dict[str, float]] = self.get_feature_bin_score()
+        woe: DataFrame = pd.DataFrame(columns=["feature", "bin", "woe", "score"])
+        for col in self.used_features:
+            tmp = pd.DataFrame(data={"feature": col, "bin": export[col].keys(), "woe": export[col].values(), "score": bin_score[col].values()})
+            woe = pd.concat(objs=[woe, tmp], axis=0, ignore_index=True)
+        
+        woe["train_pct"] = woe.apply(
+                                        func=lambda x: self.data_bin[(self.data_bin[self.is_train]==1) & (self.data_bin[x["feature"]] == x["bin"])].shape[0] / self.data_bin[self.data_bin[self.is_train]==1].shape[0], 
+                                        axis=1
+                                    ) # type: ignore
+        woe["train_bad_rate"] = woe.apply(
+                                        func=lambda x: self.data_bin[(self.data_bin[self.is_train]==1) & (self.data_bin[x["feature"]] == x["bin"])][self.target].mean(), 
+                                        axis=1
+                                    ) # type: ignore
+        woe["oot_pct"] = woe.apply(
+                                    func=lambda x: self.data_bin[(self.data_bin[self.is_train]==0) & (self.data_bin[x["feature"]] == x["bin"])].shape[0] / self.data_bin[self.data_bin[self.is_train]==0].shape[0], 
+                                    axis=1
+                                ) # type: ignore
+        woe["oot_bad_rate"] = woe.apply(
+                                    func=lambda x: self.data_bin[(self.data_bin[self.is_train]==0) & (self.data_bin[x["feature"]] == x["bin"])][self.target].mean(), 
+                                    axis=1
+                                ) # type: ignore
+        return woe
