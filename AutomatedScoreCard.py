@@ -1,4 +1,4 @@
-from typing import List, Dict
+from typing import List, Dict #, override
 from datetime import date, timedelta
 from random import seed
 from pickle import dump
@@ -19,9 +19,11 @@ from seaborn import histplot
 plt.rcParams["font.family"] = "SimHei" # 替换为你选择的字体（否则绘图中可能无法正常显示中文）
 # plt.rcParams["font.family"] = "QuanYi Zen Hei Mono"  # 替换为你选择的字体
 
+from AutomatedModeling import AutomatedModeling
 
-class AutomatedScoreCard:
-    seed(a=42) # 固定随机种子
+
+class AutomatedScoreCard(AutomatedModeling):
+    # seed(a=42) # 固定随机种子
 
     def __init__(self, data: DataFrame, target: str, time: str, not_features: List[str]) -> None:
         """传入规定格式的数据以实例化 AutomatedScoreCard 对象
@@ -32,14 +34,16 @@ class AutomatedScoreCard:
             time (str): 字段值为 date 对象
             not_features (List[str]): 除相应变量外的其他非特征字段（如时间、订单号、包名等）
         """
-        self.data: DataFrame = data.reset_index(drop=True, inplace=False) # 样本
-        self.target: str = target # 响应变量
-        self.time: str = time # 事件日期
-        self.not_features: List[str] = not_features # 除响应变量以外的其他非特征字段
-        self.is_train: str = "is_train" # 新增用以区分训练集、验证集和测试集的字段
-        self.train: DataFrame
-        self.validation: DataFrame
-        self.oot: DataFrame
+        # self.data: DataFrame = data.reset_index(drop=True, inplace=False) # 样本
+        # self.target: str = target # 响应变量
+        # self.time: str = time # 事件日期
+        # self.not_features: List[str] = not_features # 除响应变量以外的其他非特征字段
+        # self.is_train: str = "is_train" # 新增用以区分训练集、验证集和测试集的字段
+        # self.train: DataFrame
+        # self.validation: DataFrame
+        # self.oot: DataFrame
+        # self.evaluation: Dict[str, float]
+        super().__init__(data=data, target=target, time=time, not_features=not_features)
         self.binning: Dict[str, OptimalBinning]
         self.data_woe: DataFrame
         self.train_woe: DataFrame
@@ -53,37 +57,36 @@ class AutomatedScoreCard:
         self.scoreCard: ScoreCard # 评分卡对象
         self.bins_score: Dict[str, Dict[str, float]] # 特征取值映射为分数
         self.score: str # 模型分字段
-        self.evaluation: Dict[str, float]
         self.week: str = f"{self.time}_week" # self.time 所在周的周一
 
-    def split_train_oot(self, split_time: date, split_validation_set: bool = False, validation_pct: float = 0.2) -> None:
-        """划分训练集和测试集（如不划分验证集则默认将测试集复制一份作为验证集）
+    # def split_train_oot(self, split_time: date, split_validation_set: bool = False, validation_pct: float = 0.2) -> None:
+    #     """划分训练集和测试集（如不划分验证集则默认将测试集复制一份作为验证集）
 
-        Args:
-            split_time (date): 用于划分训练集和测试集的临界日期
-            split_validation_set (bool, optional): 是否需要划分验证集. Defaults to False.
-            validation_pct (float, optional): 验证集占训练集的样本. Defaults to 0.2.
-        """
-        self.data[self.is_train] = -1 # 在原始数据集中新增一个用于区分训练集、验证集和测试集的字段`is_train`: {1: "训练集", 0: "测试集", 2: "验证集"}
+    #     Args:
+    #         split_time (date): 用于划分训练集和测试集的临界日期
+    #         split_validation_set (bool, optional): 是否需要划分验证集. Defaults to False.
+    #         validation_pct (float, optional): 验证集占训练集的样本. Defaults to 0.2.
+    #     """
+    #     self.data[self.is_train] = -1 # 在原始数据集中新增一个用于区分训练集、验证集和测试集的字段`is_train`: {1: "训练集", 0: "测试集", 2: "验证集"}
         
-        self.train = self.data[self.data[self.time] <= split_time]
-        self.oot = self.data[self.data[self.time] > split_time]
+    #     self.train = self.data[self.data[self.time] <= split_time]
+    #     self.oot = self.data[self.data[self.time] > split_time]
         
-        if split_validation_set:
-            self.validation = self.train.sample(frac=validation_pct, random_state=42)
-            self.train.drop(index=self.validation.index, axis=0, inplace=True) # 从训练集中剔除掉验证集样本
-        else:
-            self.validation = self.oot.copy()
+    #     if split_validation_set:
+    #         self.validation = self.train.sample(frac=validation_pct, random_state=42)
+    #         self.train.drop(index=self.validation.index, axis=0, inplace=True) # 从训练集中剔除掉验证集样本
+    #     else:
+    #         self.validation = self.oot.copy()
         
-        self.train[self.is_train] = 1
-        self.validation[self.is_train] = 2
-        self.oot[self.is_train] = 0
-        self.data = pd.concat(objs=[self.train, self.validation, self.oot], axis=0)
+    #     self.train[self.is_train] = 1
+    #     self.validation[self.is_train] = 2
+    #     self.oot[self.is_train] = 0
+    #     self.data = pd.concat(objs=[self.train, self.validation, self.oot], axis=0)
 
-        self.train.reset_index(drop=True, inplace=True)
-        self.validation.reset_index(drop=True, inplace=True)
-        self.oot.reset_index(drop=True, inplace=True)
-        self.data.reset_index(drop=True, inplace=True)
+    #     self.train.reset_index(drop=True, inplace=True)
+    #     self.validation.reset_index(drop=True, inplace=True)
+    #     self.oot.reset_index(drop=True, inplace=True)
+    #     self.data.reset_index(drop=True, inplace=True)
 
     def initial_screening(self, empty: float = 0.9, iv: float = 0.02, corr: float = 0.7) -> List[str]:
         """原始数据 IV 和相关性初筛
@@ -249,6 +252,7 @@ class AutomatedScoreCard:
         self.score = model_score
         self.data_woe[self.score] = self.scoreCard.predict(X=self.data) # 传入原始数据而非 WOE 变换后的数据
 
+    # @override
     def calculate_model_score_psi(self, n_bins: int = 50) -> float:
         """计算模型分离散化后的 PSI
 
@@ -263,6 +267,7 @@ class AutomatedScoreCard:
         result: float = PSI(test=tmp[tmp[self.is_train]==0][f"{self.score}_bin"], base=tmp[tmp[self.is_train]==1][f"{self.score}_bin"]) # type: ignore
         return result
 
+    # @override
     def evaluate(self, n_bins: int = 50) -> Dict[str, float]:
         """模型评估
 
@@ -288,6 +293,7 @@ class AutomatedScoreCard:
         self.evaluation["model_psi"] = self.calculate_model_score_psi(n_bins=n_bins)
         return self.evaluation
     
+    # @override
     def ks_bucket(self, train_validation_oot: int = 0, n_bins: int = 10) -> DataFrame:
         """模型分分箱
 
@@ -325,6 +331,7 @@ class AutomatedScoreCard:
         
         return result
     
+    # @override
     def plot_model_score_distribution(self) -> None:
         """绘制训练集、验证集和测试集上的模型分分布图"""
         plt.figure(figsize=(20, 7))
@@ -471,7 +478,7 @@ class AutomatedScoreCard:
         # 从离散化后稳定性较好的变量中再剔除 iv 值较低的变量
         selected_features: List[str] = self.iv_screening_after_woe(selected_features=stable_features, iv=woe_iv, train_validation_oot=1)
         if eliminate_low_iv_oot: # 如果需要剔除离散化后测试集上 iv 值较低的变量
-            selected_features: List[str] = self.iv_screening_after_woe(selected_features=stable_features, iv=woe_iv, train_validation_oot=0)
+            selected_features: List[str] = self.iv_screening_after_woe(selected_features=selected_features, iv=woe_iv, train_validation_oot=0)
         print(f"从离散化后稳定性较好的变量中再剔除 iv 值较低的变量后剩余 {len(selected_features)} 个变量，分别是 {selected_features}")
         used_features: List[str] = self.stepwise_after_woe_transformer(selected_features=selected_features, estimator=estimator, direction=direction, criterion=criterion) # 逐步回顾确定最终的入模变量
         print(f"经逐步回归确定入模变量共 {len(used_features)} 个，分别是 {used_features}")
@@ -535,6 +542,7 @@ class AutomatedScoreCard:
         self.validation_woe = self.data_woe[self.data_woe[self.is_train] == 2]
         self.oot_woe = self.data_woe[self.data_woe[self.is_train] == 0]
 
+    # @override
     def predict(self, X: DataFrame) -> Series:
         """对新数据进行预测
 

@@ -19,3 +19,15 @@ from matplotlib import pyplot as plt
 from seaborn import histplot 
 plt.rcParams["font.family"] = "SimHei" # 替换为你选择的字体（否则绘图中可能无法正常显示中文）
 # plt.rcParams["font.family"] = "QuanYi Zen Hei Mono"  # 替换为你选择的字体
+
+from AutomatedModeling import AutomatedModeling
+
+
+class AutomatedXgbBoost(AutomatedModeling):
+    # seed(a=42) # 固定随机种子
+
+    def __init__(self, data: DataFrame, target: str, time: str, not_features: List[str]) -> None:
+        super().__init__(data=data, target=target, time=time, not_features=not_features)
+
+    def fit(self) -> None:
+        pass
