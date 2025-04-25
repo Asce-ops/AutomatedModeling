@@ -42,7 +42,9 @@ class AutomatedScoreCard(AutomatedModeling):
         # self.train: DataFrame
         # self.validation: DataFrame
         # self.oot: DataFrame
+        # self.used_features: List[str] # 入模变量
         # self.evaluation: Dict[str, float]
+        # self.score: str # 模型分字段
         super().__init__(data=data, target=target, time=time, not_features=not_features)
         self.binning: Dict[str, OptimalBinning]
         self.data_woe: DataFrame
@@ -52,13 +54,12 @@ class AutomatedScoreCard(AutomatedModeling):
         self.combiner: Combiner = Combiner()
         self.data_bin: DataFrame
         self.latent_features: List[str] # （经过初筛后）潜在的入模变量
-        self.used_features: List[str] # 入模变量
         self.transformer: WOETransformer = WOETransformer()
         self.scoreCard: ScoreCard # 评分卡对象
         self.bins_score: Dict[str, Dict[str, float]] # 特征取值映射为分数
-        self.score: str # 模型分字段
         self.week: str = f"{self.time}_week" # self.time 所在周的周一
-
+    
+    # # @override
     # def split_train_oot(self, split_time: date, split_validation_set: bool = False, validation_pct: float = 0.2) -> None:
     #     """划分训练集和测试集（如不划分验证集则默认将测试集复制一份作为验证集）
 
@@ -161,7 +162,8 @@ class AutomatedScoreCard(AutomatedModeling):
         self.data_bin = self.combiner.transform(X=self.data[self.latent_features+self.not_features+[self.target, self.is_train]], labels=True) # type: ignore # 根据分箱器对数据进行分箱
         self.transformer.fit(X=self.data_bin[self.data_bin[self.is_train]==1], y=self.data_bin[self.data_bin[self.is_train]==1][self.target], exclude=self.not_features+[self.target, self.is_train]) # 实例化 ScoreCard 对象需传入训练好的 WOETransformer 对象
 
-    def iv_screening_after_woe(self, selected_features: List[str], iv: float = 0.02, train_validation_oot: int = 1) -> List[str]:
+    # @override
+    def eliminate_low_iv_features(self, selected_features: List[str], iv: float = 0.02, train_validation_oot: int = 1) -> List[str]:
         """剔除离散化后 iv 值较低的变量
 
         Args:
@@ -187,22 +189,23 @@ class AutomatedScoreCard(AutomatedModeling):
         result: List[str] = distinction[distinction["iv"] >= iv].index.to_list()
         return result
 
+    # @override
     def eliminate_unstable_features(self, selected_features: List[str], psi_threshold: float = 0.1, psi_original: bool = True) -> List[str]:
-        """剔除分箱后稳定性较差的变量
+        """剔除稳定性较差的变量
 
         Args:
             selected_features (List[str]): 潜在的入模变量
             psi_threshold (float, optional): psi筛选的阈值. Defaults to 0.1.
-            psi_original (bool, optional): 使用原始数据还是离散化后的数据（True: 原始数据, False: 离散化后的数据）. Defaults to True.
+            psi_original (bool, optional): 使用原始数据还是特征工程后的数据（True: 原始数据, False: 特征工程后的数据）. Defaults to True.
 
         Returns:
             List[str]: 稳定性较好的变量
         """
         if psi_original:
-            selected_features_bin_psi: Series = PSI(test=self.train[selected_features], base=self.oot[selected_features]) # type: ignore
+            selected_features_psi: Series = PSI(test=self.train[selected_features], base=self.oot[selected_features]) # type: ignore
         else:
-            selected_features_bin_psi: Series = PSI(test=self.train_woe[selected_features], base=self.oot_woe[selected_features]) # type: ignore
-        stable_features: List[str] = selected_features_bin_psi[selected_features_bin_psi < psi_threshold].index.to_list()
+            selected_features_psi: Series = PSI(test=self.train_woe[selected_features], base=self.oot_woe[selected_features]) # type: ignore
+        stable_features: List[str] = selected_features_psi[selected_features_psi < psi_threshold].index.to_list()
         return stable_features
     
     def stepwise_after_woe_transformer(self, selected_features: List[str], estimator: str = "ols", direction: str = "both", criterion: str = "aic") -> List[str]:
@@ -475,11 +478,11 @@ class AutomatedScoreCard(AutomatedModeling):
         self.monotonic_trend_binning(max_n_bins=max_n_bins) # 将潜在入模变量进行单调分箱并进行 WOE 变换
         stable_features: List[str] = self.eliminate_unstable_features(selected_features=self.latent_features, psi_threshold=psi_threshold, psi_original=psi_original) # 从潜在入模变量中剔除稳定性较差的变量
         print(f"从潜在入模变量中剔除不稳定变量后剩余 {len(stable_features)} 个变量，分别是 {stable_features}")
-        # 从离散化后稳定性较好的变量中再剔除 iv 值较低的变量
-        selected_features: List[str] = self.iv_screening_after_woe(selected_features=stable_features, iv=woe_iv, train_validation_oot=1)
+        # 从稳定性较好的变量中再剔除 iv 值较低的变量
+        selected_features: List[str] = self.eliminate_low_iv_features(selected_features=stable_features, iv=woe_iv, train_validation_oot=1)
         if eliminate_low_iv_oot: # 如果需要剔除离散化后测试集上 iv 值较低的变量
-            selected_features: List[str] = self.iv_screening_after_woe(selected_features=selected_features, iv=woe_iv, train_validation_oot=0)
-        print(f"从离散化后稳定性较好的变量中再剔除 iv 值较低的变量后剩余 {len(selected_features)} 个变量，分别是 {selected_features}")
+            selected_features: List[str] = self.eliminate_low_iv_features(selected_features=selected_features, iv=woe_iv, train_validation_oot=0)
+        print(f"从稳定性较好的变量中再剔除 iv 值较低的变量后剩余 {len(selected_features)} 个变量，分别是 {selected_features}")
         used_features: List[str] = self.stepwise_after_woe_transformer(selected_features=selected_features, estimator=estimator, direction=direction, criterion=criterion) # 逐步回顾确定最终的入模变量
         print(f"经逐步回归确定入模变量共 {len(used_features)} 个，分别是 {used_features}")
         self.fit(used_features=used_features, model_score=model_score) # 拟合评分卡
@@ -575,7 +578,7 @@ class AutomatedScoreCard(AutomatedModeling):
             if col not in self.latent_features:
                 raise ValueError(f"{col} 不是潜在的入模变量，未对其进行分箱")
             psi: float = PSI(test=self.train[col], base=self.oot[col]) # type: ignore
-            psi_woe: float = PSI(test=self.train_woe[col], base=self.oot_woe[col]) # type: ignore        
+            psi_woe: float = PSI(test=self.train_woe[col], base=self.oot_woe[col]) # type: ignore
             features_psi.append(psi)
             features_woe_psi.append(psi_woe)
             features.append(col)
