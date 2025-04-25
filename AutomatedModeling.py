@@ -2,6 +2,7 @@ from typing import List, Dict
 from abc import ABC, abstractmethod
 from datetime import date
 from random import seed
+from math import log
 
 import pandas as pd
 from pandas.core.frame import DataFrame
@@ -24,11 +25,14 @@ class AutomatedModeling(ABC):
         self.target: str = target # 响应变量
         self.time: str = time # 事件日期
         self.not_features: List[str] = not_features # 除响应变量以外的其他非特征字段
+        self.features: List[str] = [col for col in self.data.columns if col not in self.not_features + [self.target]] # 除 target 和 not_features 以外的所有特征字段
         self.is_train: str = "is_train" # 新增用以区分训练集、验证集和测试集的字段
         self.train: DataFrame
         self.validation: DataFrame
         self.oot: DataFrame
+        self.used_features: List[str] # 最终入模特征
         self.evaluation: Dict[str, float]
+        self.score: str # 模型分字段
 
     def split_train_oot(self, split_time: date, split_validation_set: bool = False, validation_pct: float = 0.2) -> None:
         """划分训练集和测试集（如不划分验证集则默认将测试集复制一份作为验证集）
@@ -58,6 +62,34 @@ class AutomatedModeling(ABC):
         self.validation.reset_index(drop=True, inplace=True)
         self.oot.reset_index(drop=True, inplace=True)
         self.data.reset_index(drop=True, inplace=True)
+
+    @abstractmethod
+    def eliminate_low_iv_features(self, selected_features: List[str], iv: float = 0.02, train_validation_oot: int = 1) -> List[str]:
+        """剔除离散化后 iv 值较低的变量
+
+        Args:
+            selected_features (List[str]): 潜在的入模变量
+            iv (float, optional): iv 阈值. Defaults to 0.02.
+            train_validation_oot (int, optional): {1: "训练集", 0: "测试集", 2: "验证集"}. Defaults to 1.
+
+        Returns:
+            List[str]: iv 值超过指定阈值的变量
+        """
+        pass
+
+    @abstractmethod
+    def eliminate_unstable_features(self, selected_features: List[str], psi_threshold: float = 0.1, psi_original: bool = True) -> List[str]:
+        """剔除稳定性较差的变量
+
+        Args:
+            selected_features (List[str]): 潜在的入模变量
+            psi_threshold (float, optional): psi筛选的阈值. Defaults to 0.1.
+            psi_original (bool, optional): 使用原始数据还是特征工程后的数据（True: 原始数据, False: 特征工程后的数据）. Defaults to True.
+
+        Returns:
+            List[str]: 稳定性较好的变量
+        """
+        pass
 
     @abstractmethod
     def calculate_model_score_psi(self, n_bins: int) -> float:
@@ -108,5 +140,35 @@ class AutomatedModeling(ABC):
 
         Returns:
             Series: 模型分
+        """
+        pass
+    
+    @staticmethod
+    def proba2score(prob: float, pdo: int = 20, rate: float = 2, base_odds: float = 1.22, base_score: int = 600) -> float:
+        """将概率转化为分数
+
+        Args:
+            prob (float): 响应概率
+            pdo (int, optional): pdo. Defaults to 20.
+            rate (float, optional): rate. Defaults to 2.
+            base_odds (float, optional): base_odds. Defaults to 1.22.
+            base_score (int, optional): base_score. Defaults to 600.
+
+        Returns:
+            float: 响应分数
+        """
+        factor: float = pdo / log(x=rate)
+        offset: float = base_score - factor * log(x=base_odds)
+        return offset - factor * log(x=prob / (1-prob))
+    
+    @abstractmethod
+    def get_features_index_report(self, select_features: List[str]) -> DataFrame:
+        """输出变量的 iv、psi 等评价指标
+
+        Args:
+            select_features (List[str]): 特征列表
+
+        Returns:
+            DataFrame: 变量的 iv、psi 等评价指标
         """
         pass
