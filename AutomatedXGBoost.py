@@ -10,13 +10,13 @@ from toad.metrics import KS, KS_bucket, PSI, AUC
 import xgboost as xgb
 from xgboost import DMatrix
 from xgboost.core import Booster
+from xgboost import plot_importance, plot_tree
 import pandas as pd
 from pandas.core.frame import DataFrame
 from pandas.core.series import Series
 from matplotlib import pyplot as plt
 from seaborn import histplot 
-plt.rcParams["font.family"] = "SimHei" # 替换为你选择的字体（否则绘图中可能无法正常显示中文）
-# plt.rcParams["font.family"] = "QuanYi Zen Hei Mono"  # 替换为你选择的字体
+plt.rcParams["font.family"] = "SimSun" # 替换为你选择的字体（否则绘图中可能无法正常显示中文）
 
 from AutomatedModeling import AutomatedModeling
 
@@ -24,19 +24,34 @@ from AutomatedModeling import AutomatedModeling
 class AutomatedXgbBoost(AutomatedModeling):
     # seed(a=42) # 固定随机种子
     params: ClassVar[Dict[str, Any]] = { # 默认的模型参数
-        "objective": "binary:logistic",
-        "eval_metric": "auc",
+        # "objective": "binary:logistic",
+        # "eval_metric": "auc",
+        # "booster": "gbtree",
+        # "eta": 0.1,
+        # "max_depth": 6,
+        # "subsample": 0.8,
+        # "colsample_bytree": 0.8,
+        # "lambda": 1,
+        # "alpha": 0,
+        # "scale_pos_weight": 1,
+        # "n_estimators": 30,
+        # "early_stopping_rounds": 50,
+        # "seed": 42,
         "booster": "gbtree",
-        "eta": 0.1,
-        "max_depth": 6,
-        "subsample": 0.8,
-        "colsample_bytree": 0.8,
-        "lambda": 1,
-        "alpha": 0,
+        "objective": "binary:logistic",
+        "eval_metric": ["error", "logloss", "auc"], # 评价指标
+        "max_depth": 2, # 树的深度
+        "lambda": 5, # L2正则化系数
+        "alpha": 3, # L1正则化系数
+        "subsample": 0.6, # 每次训练所使用的数据的比例
+        "colsample_bytree": 0.8,  # 每棵树使用 80% 的特征
+        "min_child_weight": 5, # 最小子节点权重
+        "eta": 0.1, # 学习率
+        "seed": 42, # 随机种子
+        "nthread": 8,
+        "gamma": 1, # 分裂节点所需的最小损失函数下降值
         "scale_pos_weight": 1,
-        "n_estimators": 1000,
-        "early_stopping_rounds": 50,
-        "seed": 42,
+        "num_boost_round": 30, # 子树的数量
     }
 
     def __init__(self, data: DataFrame, target: str, time: str, not_features: List[str]) -> None:
@@ -47,6 +62,7 @@ class AutomatedXgbBoost(AutomatedModeling):
         self.Dvalidation: DMatrix
         self.Doot: DMatrix
         self.model: Booster
+        self.latent_features: List[str] # 潜在入模变量
 
     # @override
     def split_train_oot(self, split_time: date, split_validation_set: bool = False, validation_pct: float = 0.2) -> None:
@@ -59,14 +75,14 @@ class AutomatedXgbBoost(AutomatedModeling):
         """
         super().split_train_oot(split_time=split_time, split_validation_set=split_validation_set, validation_pct=validation_pct)
         # 重新划分训练集和测试集后，重新实例化 DMatrix 对象
-        self.Ddata: DMatrix = xgb.DMatrix(data=self.data[self.data], label=self.data[self.target])
-        self.Dtrain: DMatrix = xgb.DMatrix(data=self.train[self.features], label=self.train[self.target])
-        self.Dvalidation: DMatrix = xgb.DMatrix(data=self.validation[self.features], label=self.validation[self.target])
-        self.Doot: DMatrix = xgb.DMatrix(data=self.oot[self.features], label=self.oot[self.target])
+        # self.Ddata: DMatrix = xgb.DMatrix(data=self.data[self.features], label=self.data[self.target])
+        # self.Dtrain: DMatrix = xgb.DMatrix(data=self.train[self.features], label=self.train[self.target])
+        # self.Dvalidation: DMatrix = xgb.DMatrix(data=self.validation[self.features], label=self.validation[self.target])
+        # self.Doot: DMatrix = xgb.DMatrix(data=self.oot[self.features], label=self.oot[self.target])
 
     # @override
     def eliminate_low_iv_features(self, selected_features: List[str], iv: float = 0.02, train_validation_oot: int = 1) -> List[str]:
-        """剔除离散化后 iv 值较低的变量
+        """剔除 iv 值较低的变量
 
         Args:
             selected_features (List[str]): 潜在的入模变量
@@ -112,13 +128,20 @@ class AutomatedXgbBoost(AutomatedModeling):
         stable_features: List[str] = selected_features_psi[selected_features_psi < psi_threshold].index.to_list()
         return stable_features
     
-    def fit(self, model_score: str = "model_score", **params: Dict[str, Any]) -> None:
+    def fit(self, latent_features: List[str], model_score: str = "model_score", **params: Dict[str, Any]) -> None:
         """训练模型
 
         Args:
             model_score (str, optional): 模型分字段. Defaults to "model_score".
             **params (Dict[str, Any]): 传入 xgboost 的参数字典（可用于新增或覆盖默认参数）
         """
+        self.latent_features = latent_features
+
+        self.Ddata: DMatrix = xgb.DMatrix(data=self.data[self.latent_features], label=self.data[self.target])
+        self.Dtrain: DMatrix = xgb.DMatrix(data=self.train[self.latent_features], label=self.train[self.target])
+        self.Dvalidation: DMatrix = xgb.DMatrix(data=self.validation[self.latent_features], label=self.validation[self.target])
+        self.Doot: DMatrix = xgb.DMatrix(data=self.oot[self.latent_features], label=self.oot[self.target])
+
         # 训练
         self.model = xgb.train(
             params={**self.params, **params},
@@ -127,17 +150,15 @@ class AutomatedXgbBoost(AutomatedModeling):
             verbose_eval=False # 是否在训练过程中打印评估信息：若设为 True，则每次迭代都会输出；若是数字 n，则每 n 轮输出一次
         )
 
+        self.used_features = self.model.feature_names # type: ignore
         # 预测
         self.score = model_score
         self.data[self.proba] = self.model.predict(data=self.Ddata) # 预测概率
-        self.data[self.score] = self.data[self.proba].apply(func=lambda x: super().proba2score(prob=x)) # 将概率映射为分数
+        self.data[self.score] = self.data[self.proba].apply(func=lambda x: AutomatedModeling.proba2score(prob=x)) # 将概率映射为分数
 
     def run(self, split_time: date, split_validation_set: bool = False, validation_pct: float = 0.2,
-            empty: float = 0.9, origin_iv: float = 0.02, corr: float = 0.7,
-            max_n_bins: int = 5,
             psi_threshold: float = 0.1, psi_original: bool = True,
-            woe_iv: float = 0.02, eliminate_low_iv_oot: bool = True,
-            estimator: str = "ols", direction: str = "both", criterion: str = "aic",
+            iv: float = 0.02, eliminate_low_iv_oot: bool = True,
             model_score: str = "model_score",
             n_bins: int = 50
             ) -> None:
@@ -147,17 +168,10 @@ class AutomatedXgbBoost(AutomatedModeling):
             split_time (date): 划分 train 和 oot 的边界日期
             split_validation_set (bool, optional): 是否要在 train 中随机划分 validation. Defaults to False.
             validation_pct (float, optional): 验证集占训练集的比例. Defaults to 0.2.
-            empty (float, optional): 初筛时的缺失值阈值. Defaults to 0.9.
-            origin_iv (float, optional): 初筛时的 iv 阈值. Defaults to 0.02.
-            corr (float, optional): 初筛时的相关系数阈值. Defaults to 0.7.
-            max_n_bins (int, optional): 潜在入模变量单调分箱时最大分箱个数
             psi_threshold (float, optional): 剔除不稳定变量时的 PSI 阈值. Defaults to 0.1.
-            psi_original (bool, optional): 使用原始数据还是离散化后的数据（True: 原始数据, False: 离散化后的数据）. Defaults to True.
-            woe_iv (float, optional): 离散化后用 iv 值进行筛选时的 iv 阈值. Defaults to 0.02.
-            eliminate_low_iv_oot (bool, optional): 是否将离散化后测试集上 iv 值较低的变量也剔除. Defaults to True.
-            estimator (str, optional): 用于拟合的模型，["ols" | "lr" | "lasso" | "ridge"]. Defaults to "ols".
-            direction (str, optional): 逐步回归的方向，["forward" | "backward" | "both"]. Defaults to "both".
-            criterion (str, optional): 评判标准，["aic" | "bic" | "ks" | "auc"]. Defaults to "aic".
+            psi_original (bool, optional): 使用原始数据还是特征工程后的数据（True: 原始数据, False: 特征工程后的数据）. Defaults to True.
+            iv (float, optional): 用 iv 值进行筛选时的 iv 阈值. Defaults to 0.02.
+            eliminate_low_iv_oot (bool, optional): 是否将测试集上 iv 值较低的变量也剔除. Defaults to True.
             model_score (str, optional): 模型分字段命名. Defaults to "model_score".
             n_bins (int, optional): 计算模型分 PSI 时的分箱个数. Defaults to 50.
         """
@@ -166,11 +180,12 @@ class AutomatedXgbBoost(AutomatedModeling):
         stable_features: List[str] = self.eliminate_unstable_features(selected_features=self.features, psi_threshold=psi_threshold, psi_original=psi_original) # 从潜在入模变量中剔除稳定性较差的变量
         print(f"从所有特征中剔除不稳定变量后剩余 {len(stable_features)} 个变量，分别是 {stable_features}")
         # 从稳定性较好的变量中再剔除 iv 值较低的变量
-        selected_features: List[str] = self.eliminate_low_iv_features(selected_features=stable_features, iv=woe_iv, train_validation_oot=1)
-        if eliminate_low_iv_oot: # 如果需要剔除离散化后测试集上 iv 值较低的变量
-            selected_features: List[str] = self.eliminate_low_iv_features(selected_features=selected_features, iv=woe_iv, train_validation_oot=0)
+        selected_features: List[str] = self.eliminate_low_iv_features(selected_features=stable_features, iv=iv, train_validation_oot=1)
+        if eliminate_low_iv_oot: # 如果需要剔除测试集上 iv 值较低的变量
+            selected_features: List[str] = self.eliminate_low_iv_features(selected_features=selected_features, iv=iv, train_validation_oot=0)
         print(f"从稳定性较好的变量中再剔除 iv 值较低的变量后剩余 {len(selected_features)} 个变量，分别是 {selected_features}")
-        self.fit(model_score=model_score) # 拟合评分卡
+        self.fit(latent_features=selected_features, model_score=model_score) # 拟合XGB
+        print(f"最终的入模变量共 {len(self.used_features)} 个，分别是 {self.used_features}")
         evaluation: Dict[str, float] = self.evaluate(n_bins=n_bins) # 模型评价指标
         print(f"训练集上 KS 值为：{evaluation['train_ks']}，AUC 值为：{evaluation['train_auc']}；验证集上 KS 值为：{evaluation['validation_ks']}，AUC 值为 {evaluation['validation_auc']}；测试集上 KS 值为：{evaluation['oot_ks']}，AUC 值为 {evaluation['oot_auc']}；模型分的 PSI 为 {evaluation['model_psi']}")
 
@@ -276,7 +291,7 @@ class AutomatedXgbBoost(AutomatedModeling):
         histplot(
             x=self.data[self.data[self.is_train]==2][self.score], 
             kde=True, 
-            color="yellow",
+            color="blue",
             bins=50,
             label=f"{self.score}_distribution in validation",
             stat="density"
@@ -324,3 +339,60 @@ class AutomatedXgbBoost(AutomatedModeling):
         
         result: DataFrame = pd.merge(left=features_iv, right=features_psi_df, how="left", on="feature")
         return result
+
+    def get_used_features_importance(self) -> DataFrame:
+        """输出入模变量的重要性
+
+        Returns:
+            DataFrame: 入模变量的重要性
+        """
+        importance_fscore: Dict[str, float] = self.model.get_fscore() # type: ignore
+        feature_importance: DataFrame = pd.DataFrame(data={"feature": importance_fscore.keys(), "importance_score": importance_fscore.values()})
+
+        index: List[str] = ["weight", "gain", "cover", "total_gain", "total_cover"]
+        for idx in index:
+            importance_score: Dict[str, float] = self.model.get_score(importance_type=idx) # type: ignore
+            tmp: DataFrame = pd.DataFrame(data={"feature": importance_score.keys(), "importance_score": importance_score.values()})
+            feature_importance = feature_importance.merge(right=tmp, how="left", on="feature")
+        
+        return feature_importance
+    
+    def plot_used_features_importance(self) -> None:
+        """绘制入模特征重要程度的直方图"""
+        plot_importance(self.model) # 依据是 self.model.get_fscore() 的结果
+        plt.show()
+
+    def plot_XGB_tree(self, num_trees) -> None:
+        """XGB 可视化
+
+        Args:
+            num_trees (_type_): _description_
+        """
+        
+        """决策树可视化
+
+        Args:
+            num_trees (_type_): 要绘制的是哪棵树
+
+        Raises:
+            IndexError: 参数传值错误
+        """
+        if num_trees in range(self.model.num_boosted_rounds()):
+            plot_tree(booster=self.model, num_trees=num_trees)
+        else:
+            raise IndexError("num_trees 参数的赋值不在当前 XGB 的树范围内")
+        
+    # @override
+    def predict(self, X: DataFrame) -> Series:
+        """对新数据进行预测
+
+        Args:
+            X (DataFrame): 原始数据
+
+        Returns:
+            Series: 模型分
+        """
+        DX: DMatrix = DMatrix(data=X[self.used_features])
+        proba: Series = pd.Series(data=self.model.predict(data=DX))
+        model_score: Series = pd.Series(data=[AutomatedModeling.proba2score(prob=x) for x in proba])
+        return model_score
