@@ -65,7 +65,7 @@ class AutomatedModeling(ABC):
 
     @abstractmethod
     def eliminate_low_iv_features(self, selected_features: List[str], iv: float = 0.02, train_validation_oot: int = 1) -> List[str]:
-        """剔除离散化后 iv 值较低的变量
+        """剔除 iv 值较低的变量
 
         Args:
             selected_features (List[str]): 潜在的入模变量
@@ -157,9 +157,9 @@ class AutomatedModeling(ABC):
         Returns:
             float: 响应分数
         """
-        factor: float = pdo / log(x=rate)
-        offset: float = base_score - factor * log(x=base_odds)
-        return offset - factor * log(x=prob / (1-prob))
+        factor: float = pdo / log(rate)
+        offset: float = base_score - factor * log(base_odds)
+        return offset - factor * log(prob / (1-prob))
     
     @abstractmethod
     def get_features_index_report(self, select_features: List[str]) -> DataFrame:

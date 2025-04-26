@@ -16,8 +16,7 @@ from optbinning import OptimalBinning
 from numpy import ndarray
 from matplotlib import pyplot as plt
 from seaborn import histplot 
-plt.rcParams["font.family"] = "SimHei" # 替换为你选择的字体（否则绘图中可能无法正常显示中文）
-# plt.rcParams["font.family"] = "QuanYi Zen Hei Mono"  # 替换为你选择的字体
+plt.rcParams["font.family"] = "SimSun" # 替换为你选择的字体（否则绘图中可能无法正常显示中文）
 
 from AutomatedModeling import AutomatedModeling
 
@@ -357,7 +356,7 @@ class AutomatedScoreCard(AutomatedModeling):
         histplot(
             x=self.data_woe[self.data_woe[self.is_train]==2][self.score], 
             kde=True, 
-            color="yellow",
+            color="blue",
             bins=50,
             label=f"{self.score}_distribution in validation",
             stat="density"
@@ -368,7 +367,7 @@ class AutomatedScoreCard(AutomatedModeling):
         plt.ylabel(ylabel="frequency rate")
         plt.show()
 
-    def monotonic_trend_bin_plot(self, selected_features: List[str], train_validation_oot: int = 1) -> None:
+    def plot_monotonic_trend_bin(self, selected_features: List[str], train_validation_oot: int = 1) -> None:
         """潜在入模变量（或其子集）单调分箱结果可视化
 
         Args:
