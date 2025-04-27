@@ -172,3 +172,12 @@ class AutomatedModeling(ABC):
             DataFrame: 变量的 iv、psi 等评价指标
         """
         pass
+
+    @abstractmethod
+    def export_model(self, path: str) -> None:
+        """将模型以二进制导出为 pkl 格式
+
+        Args:
+            path (str): 导出路径
+        """
+        pass
