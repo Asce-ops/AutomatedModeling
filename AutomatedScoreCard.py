@@ -54,7 +54,7 @@ class AutomatedScoreCard(AutomatedModeling):
         self.data_bin: DataFrame
         self.latent_features: List[str] # （经过初筛后）潜在的入模变量
         self.transformer: WOETransformer = WOETransformer()
-        self.scoreCard: ScoreCard # 评分卡对象
+        self.model: ScoreCard # 评分卡对象
         self.bins_score: Dict[str, Dict[str, float]] # 特征取值映射为分数
         self.week: str = f"{self.time}_week" # self.time 所在周的周一
     
@@ -240,7 +240,7 @@ class AutomatedScoreCard(AutomatedModeling):
             model_score (str, optional): 模型分字段命名. Defaults to "model_score".
         """
         self.used_features = used_features
-        self.scoreCard = ScoreCard(
+        self.model = ScoreCard(
                                     combiner=self.combiner,
                                     transer=self.transformer,
                                     base_score=600,
@@ -248,11 +248,11 @@ class AutomatedScoreCard(AutomatedModeling):
                                     pdo=20,
                                     rate=2
                                 )
-        self.scoreCard.fit(X=self.train_woe[used_features], y=self.train_woe[self.target])
-        self.bins_score = self.scoreCard.export()
+        self.model.fit(X=self.train_woe[used_features], y=self.train_woe[self.target])
+        self.bins_score = self.model.export()
 
         self.score = model_score
-        self.data_woe[self.score] = self.scoreCard.predict(X=self.data) # 传入原始数据而非 WOE 变换后的数据
+        self.data_woe[self.score] = self.model.predict(X=self.data) # 传入原始数据而非 WOE 变换后的数据
 
     # @override
     def calculate_model_score_psi(self, n_bins: int = 50) -> float:
@@ -503,7 +503,7 @@ class AutomatedScoreCard(AutomatedModeling):
             path (str): 导出路径
         """
         with open(file=path, mode="wb") as f:
-            dump(obj=self.scoreCard, file=f)
+            dump(obj=self.model, file=f)
 
     def get_binning_rules(self, selected_features: List[str]) -> Dict[str, List[float]]:
         """查看潜在入模变量或其子集当前的分箱切割点
@@ -554,7 +554,7 @@ class AutomatedScoreCard(AutomatedModeling):
         Returns:
             Series: 模型分
         """
-        model_score: Series = pd.Series(data=self.scoreCard.predict(X=X)) # type: ignore # 传入原始数据而非 WOE 变换后的数据
+        model_score: Series = pd.Series(data=self.model.predict(X=X)) # type: ignore # 传入原始数据而非 WOE 变换后的数据
         return model_score
 
     def get_features_index_report(self, select_features: List[str]) -> DataFrame:
