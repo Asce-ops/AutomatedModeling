@@ -21,7 +21,7 @@ plt.rcParams["font.family"] = "SimSun" # 替换为你选择的字体（否则绘
 from AutomatedModeling import AutomatedModeling
 
 
-class AutomatedXgbBoost(AutomatedModeling):
+class AutomatedXGBoost(AutomatedModeling):
     params: ClassVar[Dict[str, Any]] = { # 默认的模型参数
         # General Parameters
         "booster": "gbtree", # 基学习器类型，可选 {"gbtree": "树模型", "gblinear": "线性模型"}
