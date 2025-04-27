@@ -351,7 +351,7 @@ class AutomatedXGBoost(AutomatedModeling):
             tmp: DataFrame = pd.DataFrame(data={"feature": importance_score.keys(), idx: importance_score.values()})
             feature_importance = feature_importance.merge(right=tmp, how="left", on="feature")
         
-        feature_importance.sort_values(by="weight", ascending=False, inplace=True) # 按照 weight 排序
+        feature_importance.sort_values(by="weight", ascending=False, inplace=True, ignore_index=True) # 按照 weight 排序
 
         return feature_importance
     
