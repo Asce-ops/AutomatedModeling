@@ -22,36 +22,27 @@ from AutomatedModeling import AutomatedModeling
 
 
 class AutomatedXgbBoost(AutomatedModeling):
-    # seed(a=42) # 固定随机种子
     params: ClassVar[Dict[str, Any]] = { # 默认的模型参数
-        # "objective": "binary:logistic",
-        # "eval_metric": "auc",
-        # "booster": "gbtree",
-        # "eta": 0.1,
-        # "max_depth": 6,
-        # "subsample": 0.8,
-        # "colsample_bytree": 0.8,
-        # "lambda": 1,
-        # "alpha": 0,
-        # "scale_pos_weight": 1,
-        # "n_estimators": 30,
-        # "early_stopping_rounds": 50,
-        # "seed": 42,
-        "booster": "gbtree",
-        "objective": "binary:logistic",
+        # General Parameters
+        "booster": "gbtree", # 基学习器类型，可选 {"gbtree": "树模型", "gblinear": "线性模型"}
+        "nthread": 8, # XGBoost 运行时的线程数
+        
+        # Booster Parameters
+        "eta": 0.1, # 收缩步长，[0, 1]
+        "gamma": 1, # 分裂节点所需的最小损失函数下降值，[0, +∞)
+        "max_depth": 2, # 树的最大深度，[1, +∞)
+        "min_child_weight": 5, # 叶子节点最小的样本权重和，如果一个叶子节点的样本权重和小于min_child_weight则拆分过程结束，[0, +∞)
+        "subsample": 0.6, # 每次训练所使用的数据的比例，(0, 1]
+        "colsample_bytree": 0.8,  # 每棵树特征采样的比例，(0, 1]
+        
+        # Task Parameters
+        "objective": "binary:logistic", # 学习任务及相应的学习目标。可选 {"reg:linear": "线性回归", "reg:logistic": "逻辑回归", "binary:logistic": "二分类的逻辑回归问题，输出为概率", "binary:logitraw": "二分类的逻辑回归问题，输出的结果为wTx", ...}
         "eval_metric": ["error", "logloss", "auc"], # 评价指标
-        "max_depth": 2, # 树的深度
+        "seed": 42, # 随机种子
+        # "num_boost_round": 30, # 基模型的数量（该参数似乎只能在 Booster 对象的 train 方法中以关键字参数传入才有效）
         "lambda": 5, # L2正则化系数
         "alpha": 3, # L1正则化系数
-        "subsample": 0.6, # 每次训练所使用的数据的比例
-        "colsample_bytree": 0.8,  # 每棵树使用 80% 的特征
-        "min_child_weight": 5, # 最小子节点权重
-        "eta": 0.1, # 学习率
-        "seed": 42, # 随机种子
-        "nthread": 8,
-        "gamma": 1, # 分裂节点所需的最小损失函数下降值
-        "scale_pos_weight": 1,
-        "num_boost_round": 30, # 子树的数量
+        "scale_pos_weight": 1
     }
 
     def __init__(self, data: DataFrame, target: str, time: str, not_features: List[str]) -> None:
@@ -61,7 +52,7 @@ class AutomatedXgbBoost(AutomatedModeling):
         self.Dtrain: DMatrix
         self.Dvalidation: DMatrix
         self.Doot: DMatrix
-        self.model: Booster
+        self.model: Booster # Booster 对象
         self.latent_features: List[str] # 潜在入模变量
 
     # @override
@@ -128,11 +119,12 @@ class AutomatedXgbBoost(AutomatedModeling):
         stable_features: List[str] = selected_features_psi[selected_features_psi < psi_threshold].index.to_list()
         return stable_features
     
-    def fit(self, latent_features: List[str], model_score: str = "model_score", **params: Dict[str, Any]) -> None:
+    def fit(self, latent_features: List[str], model_score: str = "model_score", num_boost_round: int = 30, **params: Dict[str, Any]) -> None:
         """训练模型
 
         Args:
             model_score (str, optional): 模型分字段. Defaults to "model_score".
+            num_boost_round (int, optional): 要生成的基模型的数量. Defaults to 30.
             **params (Dict[str, Any]): 传入 xgboost 的参数字典（可用于新增或覆盖默认参数）
         """
         self.latent_features = latent_features
@@ -145,12 +137,13 @@ class AutomatedXgbBoost(AutomatedModeling):
         # 训练
         self.model = xgb.train(
             params={**self.params, **params},
+            num_boost_round=num_boost_round, # 子树的数量
             dtrain=self.Dtrain,
             evals=[(self.Dtrain, "train"), (self.Dvalidation, "validation")],
             verbose_eval=False # 是否在训练过程中打印评估信息：若设为 True，则每次迭代都会输出；若是数字 n，则每 n 轮输出一次
         )
 
-        self.used_features = self.model.feature_names # type: ignore
+        self.used_features = list(self.model.get_fscore().keys()) # Booster 对象的 feature_names 属性返回的是所有用于训练的特征，不管最终是否入模
         # 预测
         self.score = model_score
         self.data[self.proba] = self.model.predict(data=self.Ddata) # 预测概率
@@ -159,8 +152,9 @@ class AutomatedXgbBoost(AutomatedModeling):
     def run(self, split_time: date, split_validation_set: bool = False, validation_pct: float = 0.2,
             psi_threshold: float = 0.1, psi_original: bool = True,
             iv: float = 0.02, eliminate_low_iv_oot: bool = True,
-            model_score: str = "model_score",
-            n_bins: int = 50
+            model_score: str = "model_score", num_boost_round: int = 30,
+            n_bins: int = 50,
+            **params: Dict[str, Any]
             ) -> None:
         """自动建模的主方法
 
@@ -173,7 +167,9 @@ class AutomatedXgbBoost(AutomatedModeling):
             iv (float, optional): 用 iv 值进行筛选时的 iv 阈值. Defaults to 0.02.
             eliminate_low_iv_oot (bool, optional): 是否将测试集上 iv 值较低的变量也剔除. Defaults to True.
             model_score (str, optional): 模型分字段命名. Defaults to "model_score".
+            num_boost_round (int, optional): 要生成的基模型的数量. Defaults to 30.
             n_bins (int, optional): 计算模型分 PSI 时的分箱个数. Defaults to 50.
+            **params (Dict[str, Any]): 传入 xgboost 的参数字典（可用于新增或覆盖默认参数）
         """
         self.split_train_oot(split_time=split_time, split_validation_set=split_validation_set, validation_pct=validation_pct) # 划分训练集、验证集和测试集
         print(f"训练集有 {self.train.shape[0]} 条样本，bad_rate 为 {self.train[self.target].mean()}；验证集有 {self.validation.shape[0]} 条样本，bad_rate 为 {self.validation[self.target].mean()}；测试集有 {self.oot.shape[0]} 条样本，bad_rate 为 {self.oot[self.target].mean()}")
@@ -184,7 +180,7 @@ class AutomatedXgbBoost(AutomatedModeling):
         if eliminate_low_iv_oot: # 如果需要剔除测试集上 iv 值较低的变量
             selected_features: List[str] = self.eliminate_low_iv_features(selected_features=selected_features, iv=iv, train_validation_oot=0)
         print(f"从稳定性较好的变量中再剔除 iv 值较低的变量后剩余 {len(selected_features)} 个变量，分别是 {selected_features}")
-        self.fit(latent_features=selected_features, model_score=model_score) # 拟合XGB
+        self.fit(latent_features=selected_features, model_score=model_score, num_boost_round=num_boost_round, params=params) # 拟合 XGB
         print(f"最终的入模变量共 {len(self.used_features)} 个，分别是 {self.used_features}")
         evaluation: Dict[str, float] = self.evaluate(n_bins=n_bins) # 模型评价指标
         print(f"训练集上 KS 值为：{evaluation['train_ks']}，AUC 值为：{evaluation['train_auc']}；验证集上 KS 值为：{evaluation['validation_ks']}，AUC 值为 {evaluation['validation_auc']}；测试集上 KS 值为：{evaluation['oot_ks']}，AUC 值为 {evaluation['oot_auc']}；模型分的 PSI 为 {evaluation['model_psi']}")
@@ -347,29 +343,25 @@ class AutomatedXgbBoost(AutomatedModeling):
             DataFrame: 入模变量的重要性
         """
         importance_fscore: Dict[str, float] = self.model.get_fscore() # type: ignore
-        feature_importance: DataFrame = pd.DataFrame(data={"feature": importance_fscore.keys(), "importance_score": importance_fscore.values()})
+        feature_importance: DataFrame = pd.DataFrame(data={"feature": importance_fscore.keys()})
 
-        index: List[str] = ["weight", "gain", "cover", "total_gain", "total_cover"]
+        index: List[str] = ["weight", "gain", "cover"]
         for idx in index:
             importance_score: Dict[str, float] = self.model.get_score(importance_type=idx) # type: ignore
-            tmp: DataFrame = pd.DataFrame(data={"feature": importance_score.keys(), "importance_score": importance_score.values()})
+            tmp: DataFrame = pd.DataFrame(data={"feature": importance_score.keys(), idx: importance_score.values()})
             feature_importance = feature_importance.merge(right=tmp, how="left", on="feature")
         
+        feature_importance.sort_values(by="weight", ascending=False, inplace=True) # 按照 weight 排序
+
         return feature_importance
     
     def plot_used_features_importance(self) -> None:
         """绘制入模特征重要程度的直方图"""
-        plot_importance(self.model) # 依据是 self.model.get_fscore() 的结果
+        plot_importance(self.model) # 依据是 self.model.get_fscore() 的结果，也就是 weight
         plt.show()
 
     def plot_XGB_tree(self, num_trees) -> None:
         """XGB 可视化
-
-        Args:
-            num_trees (_type_): _description_
-        """
-        
-        """决策树可视化
 
         Args:
             num_trees (_type_): 要绘制的是哪棵树
@@ -377,10 +369,11 @@ class AutomatedXgbBoost(AutomatedModeling):
         Raises:
             IndexError: 参数传值错误
         """
-        if num_trees in range(self.model.num_boosted_rounds()):
+        num_boosted_rounds: int = self.model.num_boosted_rounds()
+        if num_trees in range(num_boosted_rounds):
             plot_tree(booster=self.model, num_trees=num_trees)
         else:
-            raise IndexError("num_trees 参数的赋值不在当前 XGB 的树范围内")
+            raise IndexError(f"num_trees 参数的赋值不在当前 XGB 的树范围 [0, {num_boosted_rounds}) 内")
         
     # @override
     def predict(self, X: DataFrame) -> Series:
@@ -396,3 +389,13 @@ class AutomatedXgbBoost(AutomatedModeling):
         proba: Series = pd.Series(data=self.model.predict(data=DX))
         model_score: Series = pd.Series(data=[AutomatedModeling.proba2score(prob=x) for x in proba])
         return model_score
+
+    # @override
+    def export_model(self, path: str) -> None:
+        """将模型以二进制导出为 pkl 格式
+
+        Args:
+            path (str): 导出路径
+        """
+        with open(file=path, mode="wb") as f:
+            dump(obj=self.model, file=f)
