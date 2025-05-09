@@ -119,13 +119,13 @@ class AutomatedXGBoost(AutomatedModeling):
         stable_features: List[str] = selected_features_psi[selected_features_psi < psi_threshold].index.to_list()
         return stable_features
     
-    def fit(self, latent_features: List[str], model_score: str = "model_score", num_boost_round: int = 30, **params: Dict[str, Any]) -> None:
+    def fit(self, latent_features: List[str], model_score: str = "model_score", num_boost_round: int = 30, **params: Any) -> None:
         """训练模型
 
         Args:
             model_score (str, optional): 模型分字段. Defaults to "model_score".
             num_boost_round (int, optional): 要生成的基模型的数量. Defaults to 30.
-            **params (Dict[str, Any]): 传入 xgboost 的参数字典（可用于新增或覆盖默认参数）
+            **params (Any): 传入 xgboost 的参数字典（可用于新增或覆盖默认参数）
         """
         self.latent_features = latent_features
 
@@ -134,9 +134,10 @@ class AutomatedXGBoost(AutomatedModeling):
         self.Dvalidation: DMatrix = xgb.DMatrix(data=self.validation[self.latent_features], label=self.validation[self.target])
         self.Doot: DMatrix = xgb.DMatrix(data=self.oot[self.latent_features], label=self.oot[self.target])
 
+        merged_params: Dict[str, Any] = {**self.params, **params} # 合并默认参数和传入的参数
         # 训练
         self.model = xgb.train(
-            params={**self.params, **params},
+            params=merged_params,
             num_boost_round=num_boost_round, # 子树的数量
             dtrain=self.Dtrain,
             evals=[(self.Dtrain, "train"), (self.Dvalidation, "validation")],
@@ -154,7 +155,7 @@ class AutomatedXGBoost(AutomatedModeling):
             iv: float = 0.02, eliminate_low_iv_oot: bool = True,
             model_score: str = "model_score", num_boost_round: int = 30,
             n_bins: int = 50,
-            **params: Dict[str, Any]
+            **params: Any
             ) -> None:
         """自动建模的主方法
 
@@ -169,7 +170,7 @@ class AutomatedXGBoost(AutomatedModeling):
             model_score (str, optional): 模型分字段命名. Defaults to "model_score".
             num_boost_round (int, optional): 要生成的基模型的数量. Defaults to 30.
             n_bins (int, optional): 计算模型分 PSI 时的分箱个数. Defaults to 50.
-            **params (Dict[str, Any]): 传入 xgboost 的参数字典（可用于新增或覆盖默认参数）
+            **params (Any): 传入 xgboost 的参数字典（可用于新增或覆盖默认参数）
         """
         self.split_train_oot(split_time=split_time, split_validation_set=split_validation_set, validation_pct=validation_pct) # 划分训练集、验证集和测试集
         print(f"训练集有 {self.train.shape[0]} 条样本，bad_rate 为 {self.train[self.target].mean()}；验证集有 {self.validation.shape[0]} 条样本，bad_rate 为 {self.validation[self.target].mean()}；测试集有 {self.oot.shape[0]} 条样本，bad_rate 为 {self.oot[self.target].mean()}")
