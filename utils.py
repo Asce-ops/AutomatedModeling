@@ -3,6 +3,7 @@ from typing import Tuple, Optional
 from pandas.core.frame import DataFrame
 from pandas.core.series import Series
 import pandas as pd
+from toad.transform import Combiner
 
 
 def swap_in_out(data: DataFrame, is_mature: str, target: str, new_model_score: str, 
@@ -20,7 +21,7 @@ def swap_in_out(data: DataFrame, is_mature: str, target: str, new_model_score: s
         new_model_score (str): 新模型分字段
         old_risk_level (str, optional): 当前风险水平字段. Defaults to "risk_level".
         new_risk_level (str, optional): 新模型分的风险水平字段（会被新增的字段）. Defaults to "new_risk_level".
-        primary_key (str, optional): 用以惟一确定一笔订单. Defaults to "sn".
+        primary_key (str, optional): 用以唯一确定一笔订单. Defaults to "sn".
         accept (str, optional): 模型通过. Defaults to "ACCEPT".
         review (str, optional): 走人审. Defaults to "REVIEW".
         reject (str, optional): 模型拒绝. Defaults to "REJECT".
@@ -79,3 +80,56 @@ def swap_in_out(data: DataFrame, is_mature: str, target: str, new_model_score: s
     )
 
     return verify_swap, risk_swap
+
+def model_cross(data: DataFrame, is_mature: str, target: str, model_score1: str, model_score2: str, 
+                primary_key: str = "sn", model_score1_bins: int = 10, model_score2_bins: int = 10
+                ) -> Tuple[DataFrame, DataFrame]:
+    """计算两个模型分的交叉情况
+
+    Args:
+        data (DataFrame): 进件订单数据
+        is_mature (str): 0-1 变量，放款订单是否成熟
+        target (str): 0-1 变量，成熟订单是否坏账
+        model_score1 (str): 模型分 1
+        model_score2 (str): 模型分 2
+        primary_key (str, optional): 用以唯一确定一笔订单. Defaults to "sn".
+        model_score1_bins (int, optional): 模型分 1 的等频分箱数. Defaults to 10.
+        model_score2_bins (int, optional): 模型分 2 的等频分箱数. Defaults to 10.
+
+    Returns:
+        Tuple[DataFrame, DataFrame]: (两个模型分交叉部分的进件情况, 两个模型分交叉部分的风险情况)
+    """
+    num: int = data.shape[0]
+
+    # Combiner 对象为不同的列指定不同的分箱规则
+    combiner: Combiner = Combiner()
+    combiner.fit(X=data[model_score1], y=data[target], method="quantile", n_bins=model_score1_bins, empty_separate=False)
+    combiner.fit(X=data[model_score2], y=data[target], method="quantile", n_bins=model_score2_bins, empty_separate=False)
+    data[f"{model_score1}_bin"] = combiner.transform(X=data[model_score1], labels=True)
+    data[f"{model_score2}_bin"] = combiner.transform(X=data[model_score2], labels=True)
+
+    def verify_pct(series: Series) -> float:
+        """用于计算交叉部分占总体的比例"""
+        return len(series) / num
+    
+    def bad_rate(series: Series) -> float:
+        """用于计算交叉部分的风险情况"""
+        return series.mean()
+    
+    verify_cross: DataFrame = pd.pivot_table(
+        data=data,
+        columns=[f"{model_score1}_bin"],
+        index=[f"{model_score2}_bin"],
+        values=[primary_key],
+        aggfunc={primary_key: ["count", verify_pct]} # type: ignore
+    )
+
+    risk_cross: DataFrame = pd.pivot_table(
+        data=data[data[is_mature] == 1], # 成熟订单
+        columns=[f"{model_score1}_bin"],
+        index=[f"{model_score2}_bin"],
+        values=[primary_key, target],
+        aggfunc={primary_key: ["count"], target: [bad_rate]} # type: ignore
+    )
+
+    return verify_cross, risk_cross
