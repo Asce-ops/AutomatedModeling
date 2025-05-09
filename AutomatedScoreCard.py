@@ -33,17 +33,6 @@ class AutomatedScoreCard(AutomatedModeling):
             time (str): 字段值为 date 对象
             not_features (List[str]): 除相应变量外的其他非特征字段（如时间、订单号、包名等）
         """
-        # self.data: DataFrame = data.reset_index(drop=True, inplace=False) # 样本
-        # self.target: str = target # 响应变量
-        # self.time: str = time # 事件日期
-        # self.not_features: List[str] = not_features # 除响应变量以外的其他非特征字段
-        # self.is_train: str = "is_train" # 新增用以区分训练集、验证集和测试集的字段
-        # self.train: DataFrame
-        # self.validation: DataFrame
-        # self.oot: DataFrame
-        # self.used_features: List[str] # 入模变量
-        # self.evaluation: Dict[str, float]
-        # self.score: str # 模型分字段
         super().__init__(data=data, target=target, time=time, not_features=not_features)
         self.binning: Dict[str, OptimalBinning]
         self.data_woe: DataFrame
@@ -58,36 +47,6 @@ class AutomatedScoreCard(AutomatedModeling):
         self.bins_score: Dict[str, Dict[str, float]] # 特征取值映射为分数
         self.week: str = f"{self.time}_week" # self.time 所在周的周一
     
-    # # @override
-    # def split_train_oot(self, split_time: date, split_validation_set: bool = False, validation_pct: float = 0.2) -> None:
-    #     """划分训练集和测试集（如不划分验证集则默认将测试集复制一份作为验证集）
-
-    #     Args:
-    #         split_time (date): 用于划分训练集和测试集的临界日期
-    #         split_validation_set (bool, optional): 是否需要划分验证集. Defaults to False.
-    #         validation_pct (float, optional): 验证集占训练集的样本. Defaults to 0.2.
-    #     """
-    #     self.data[self.is_train] = -1 # 在原始数据集中新增一个用于区分训练集、验证集和测试集的字段`is_train`: {1: "训练集", 0: "测试集", 2: "验证集"}
-        
-    #     self.train = self.data[self.data[self.time] <= split_time]
-    #     self.oot = self.data[self.data[self.time] > split_time]
-        
-    #     if split_validation_set:
-    #         self.validation = self.train.sample(frac=validation_pct, random_state=42)
-    #         self.train.drop(index=self.validation.index, axis=0, inplace=True) # 从训练集中剔除掉验证集样本
-    #     else:
-    #         self.validation = self.oot.copy()
-        
-    #     self.train[self.is_train] = 1
-    #     self.validation[self.is_train] = 2
-    #     self.oot[self.is_train] = 0
-    #     self.data = pd.concat(objs=[self.train, self.validation, self.oot], axis=0)
-
-    #     self.train.reset_index(drop=True, inplace=True)
-    #     self.validation.reset_index(drop=True, inplace=True)
-    #     self.oot.reset_index(drop=True, inplace=True)
-    #     self.data.reset_index(drop=True, inplace=True)
-
     def initial_screening(self, empty: float = 0.9, iv: float = 0.02, corr: float = 0.7) -> List[str]:
         """原始数据 IV 和相关性初筛
 
