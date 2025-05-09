@@ -181,7 +181,7 @@ class AutomatedXGBoost(AutomatedModeling):
         if eliminate_low_iv_oot: # 如果需要剔除测试集上 iv 值较低的变量
             selected_features: List[str] = self.eliminate_low_iv_features(selected_features=selected_features, iv=iv, train_validation_oot=0)
         print(f"从稳定性较好的变量中再剔除 iv 值较低的变量后剩余 {len(selected_features)} 个变量，分别是 {selected_features}")
-        self.fit(latent_features=selected_features, model_score=model_score, num_boost_round=num_boost_round, params=params) # 拟合 XGB
+        self.fit(latent_features=selected_features, model_score=model_score, num_boost_round=num_boost_round, **params) # 拟合 XGB
         print(f"最终的入模变量共 {len(self.used_features)} 个，分别是 {self.used_features}")
         evaluation: Dict[str, float] = self.evaluate(n_bins=n_bins) # 模型评价指标
         print(f"训练集上 KS 值为：{evaluation['train_ks']}，AUC 值为：{evaluation['train_auc']}；验证集上 KS 值为：{evaluation['validation_ks']}，AUC 值为 {evaluation['validation_auc']}；测试集上 KS 值为：{evaluation['oot_ks']}，AUC 值为 {evaluation['oot_auc']}；模型分的 PSI 为 {evaluation['model_psi']}")
