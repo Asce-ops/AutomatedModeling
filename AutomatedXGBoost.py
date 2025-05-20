@@ -386,7 +386,7 @@ class AutomatedXGBoost(AutomatedModeling):
         Returns:
             Series: 模型分
         """
-        DX: DMatrix = DMatrix(data=X[self.used_features])
+        DX: DMatrix = DMatrix(data=X[self.latent_features])
         proba: Series = pd.Series(data=self.model.predict(data=DX))
         model_score: Series = pd.Series(data=[AutomatedModeling.proba2score(prob=x) for x in proba])
         return model_score
