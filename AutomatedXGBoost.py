@@ -1,9 +1,7 @@
 from typing import List, Dict, Any, ClassVar #, override
 from datetime import date
-from random import seed
 from pickle import dump
 import warnings
-warnings.filterwarnings(action="ignore") # 忽略所有警告
 
 from toad import quality
 from toad.metrics import KS, KS_bucket, PSI, AUC
@@ -16,10 +14,12 @@ from pandas.core.frame import DataFrame
 from pandas.core.series import Series
 from matplotlib import pyplot as plt
 from seaborn import histplot 
-plt.rcParams["font.family"] = "SimSun" # 替换为你选择的字体（否则绘图中可能无法正常显示中文）
 
 from AutomatedModeling import AutomatedModeling
 
+
+warnings.filterwarnings(action="ignore") # 忽略所有警告
+plt.rcParams["font.family"] = "SimSun" # 替换为你选择的字体（否则绘图中可能无法正常显示中文）
 
 class AutomatedXGBoost(AutomatedModeling):
     params: ClassVar[Dict[str, Any]] = { # 默认的模型参数
