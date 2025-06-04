@@ -1,9 +1,7 @@
 from typing import List, Dict #, override
 from datetime import date, timedelta
-from random import seed
 from pickle import dump
 import warnings
-warnings.filterwarnings(action="ignore") # 忽略所有警告
 
 from toad import Combiner, WOETransformer, ScoreCard, quality
 from toad.selection import select, stepwise
@@ -16,10 +14,12 @@ from optbinning import OptimalBinning
 from numpy import ndarray
 from matplotlib import pyplot as plt
 from seaborn import histplot 
-plt.rcParams["font.family"] = "SimSun" # 替换为你选择的字体（否则绘图中可能无法正常显示中文）
 
 from AutomatedModeling import AutomatedModeling
 
+
+plt.rcParams["font.family"] = "SimSun" # 替换为你选择的字体（否则绘图中可能无法正常显示中文）
+warnings.filterwarnings(action="ignore") # 忽略所有警告
 
 class AutomatedScoreCard(AutomatedModeling):
     # seed(a=42) # 固定随机种子
@@ -344,7 +344,7 @@ class AutomatedScoreCard(AutomatedModeling):
         elif train_validation_oot == 2:
             label: str = "validation"
         else:
-            raise ValueError(f"参数 train_validation_oot 只能传入 0 或 1 或 2")
+            raise ValueError("参数 train_validation_oot 只能传入 0 或 1 或 2")
 
         for col in selected_features:
             if col in self.latent_features:
@@ -390,7 +390,7 @@ class AutomatedScoreCard(AutomatedModeling):
             elif all_train_validation_oot == 2:
                 label: str = "validation"
             else:
-                raise ValueError(f"参数 all_train_validation_oot 只能传入 -1 或 0 或 1 或 2")
+                raise ValueError("参数 all_train_validation_oot 只能传入 -1 或 0 或 1 或 2")
             data_bin: DataFrame = self.data_bin[self.data_bin[self.is_train]==all_train_validation_oot]
         
         for feature in selected_features:
@@ -516,6 +516,46 @@ class AutomatedScoreCard(AutomatedModeling):
         model_score: Series = pd.Series(data=self.model.predict(X=X)) # type: ignore # 传入原始数据而非 WOE 变换后的数据
         return model_score
 
+    # def get_features_index_report(self, select_features: List[str]) -> DataFrame:
+    #     """输出变量的 iv、psi 等评价指标
+
+    #     Args:
+    #         select_features (List[str]): 潜在入模变量或其子集
+
+    #     Raises:
+    #         ValueError: 未对特征进行分箱
+
+    #     Returns:
+    #         DataFrame: 变量的 iv、psi 等评价指标
+    #     """
+    #     # 计算 PSI
+    #     features_psi: List[float] = []
+    #     features_woe_psi: List[float] = []
+    #     features: List[str] = []
+    #     for col in select_features:
+    #         if col not in self.latent_features:
+    #             raise ValueError(f"{col} 不是潜在的入模变量，未对其进行分箱")
+    #         psi: float = PSI(test=self.train[col], base=self.oot[col]) # type: ignore
+    #         psi_woe: float = PSI(test=self.train_woe[col], base=self.oot_woe[col]) # type: ignore
+    #         features_psi.append(psi)
+    #         features_woe_psi.append(psi_woe)
+    #         features.append(col)
+    #     features_psi_df: DataFrame = pd.DataFrame(data={"feature": features, "psi": features_psi, "woe_psi": features_woe_psi})
+
+    #     features_train_iv: DataFrame = quality(dataframe=self.train_woe[select_features+[self.target]], target=self.target, iv_only=False)
+    #     features_oot_iv: DataFrame = quality(dataframe=self.oot_woe[select_features+[self.target]], target=self.target, iv_only=False)
+    #     # 区分训练集和测试集的变量名        
+    #     name_train: Dict[str, str] = {col: f"{col}_train" for col in features_train_iv.columns}
+    #     name_oot: Dict[str, str] = {col: f"{col}_oot" for col in features_oot_iv.columns}
+    #     features_train_iv.rename(columns=name_train, inplace=True)
+    #     features_oot_iv.rename(columns=name_oot, inplace=True)
+    #     features_train_iv.reset_index(drop=False, inplace=True, names="feature")
+    #     features_oot_iv.reset_index(drop=False, inplace=True, names="feature")
+    #     features_iv: DataFrame = pd.merge(left=features_train_iv, right=features_oot_iv, how="left", on="feature")
+        
+    #     result: DataFrame = pd.merge(left=features_iv, right=features_psi_df, how="left", on="feature")
+    #     return result
+
     def get_features_index_report(self, select_features: List[str]) -> DataFrame:
         """输出变量的 iv、psi 等评价指标
 
@@ -542,16 +582,29 @@ class AutomatedScoreCard(AutomatedModeling):
             features.append(col)
         features_psi_df: DataFrame = pd.DataFrame(data={"feature": features, "psi": features_psi, "woe_psi": features_woe_psi})
 
-        features_train_iv: DataFrame = quality(dataframe=self.train_woe[select_features+[self.target]], target=self.target, iv_only=False)
-        features_oot_iv: DataFrame = quality(dataframe=self.oot_woe[select_features+[self.target]], target=self.target, iv_only=False)
-        # 区分训练集和测试集的变量名        
+        features_train_woe_iv: DataFrame = quality(dataframe=self.train_woe[select_features+[self.target]], target=self.target, iv_only=True)
+        features_oot_woe_iv: DataFrame = quality(dataframe=self.oot_woe[select_features+[self.target]], target=self.target, iv_only=True)
+        features_train_woe_iv.drop(columns=["gini", "entropy"], inplace=True)
+        features_oot_woe_iv.drop(columns=["gini", "entropy"], inplace=True)
+        features_train_iv: DataFrame = quality(dataframe=self.train[select_features+[self.target]], target=self.target, iv_only=False)
+        features_oot_iv: DataFrame = quality(dataframe=self.oot[select_features+[self.target]], target=self.target, iv_only=False)
+        # 区分训练集和测试集的变量名
+        woe_name_train: Dict[str, str] = {col: f"woe_{col}_train" for col in features_train_woe_iv.columns}
+        woe_name_oot: Dict[str, str] = {col: f"woe_{col}_oot" for col in features_oot_woe_iv.columns}
         name_train: Dict[str, str] = {col: f"{col}_train" for col in features_train_iv.columns}
         name_oot: Dict[str, str] = {col: f"{col}_oot" for col in features_oot_iv.columns}
+        features_train_woe_iv.rename(columns=woe_name_train, inplace=True)
+        features_oot_woe_iv.rename(columns=woe_name_oot, inplace=True)
         features_train_iv.rename(columns=name_train, inplace=True)
         features_oot_iv.rename(columns=name_oot, inplace=True)
+        features_train_woe_iv.reset_index(drop=False, inplace=True, names="feature")
+        features_oot_woe_iv.reset_index(drop=False, inplace=True, names="feature")
         features_train_iv.reset_index(drop=False, inplace=True, names="feature")
         features_oot_iv.reset_index(drop=False, inplace=True, names="feature")
-        features_iv: DataFrame = pd.merge(left=features_train_iv, right=features_oot_iv, how="left", on="feature")
+        features_iv: DataFrame = features_train_iv.merge(
+            right=features_oot_iv, how="left", on="feature").merge(
+            right=features_train_woe_iv, how="left", on="feature").merge(
+            right=features_oot_woe_iv, how="left", on="feature")
         
         result: DataFrame = pd.merge(left=features_iv, right=features_psi_df, how="left", on="feature")
         return result
