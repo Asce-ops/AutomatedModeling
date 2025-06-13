@@ -13,9 +13,10 @@ from pandas.core.series import Series
 from optbinning import OptimalBinning
 from numpy import ndarray
 from matplotlib import pyplot as plt
-from seaborn import histplot 
+from seaborn import histplot
 
 from AutomatedModeling import AutomatedModeling
+from MLModel import MLModel
 
 
 plt.rcParams["font.family"] = "SimSun" # 替换为你选择的字体（否则绘图中可能无法正常显示中文）
@@ -229,29 +230,31 @@ class AutomatedScoreCard(AutomatedModeling):
         return result
 
     # @override
-    def evaluate(self, n_bins: int = 50) -> Dict[str, float]:
+    def evaluate(self, n_bins: int = 50) -> AutomatedModeling.Evaluation:
         """模型评估
 
         Args:
             n_bins (int, optional): 计算模型分 PSI 时的分箱个数. Defaults to 50.
 
         Returns:
-            Dict[str, float]:  模型的量化指标（KS, AUC, model_score_psi）
+            AutomatedModeling.Evaluation:  模型的量化指标（KS, AUC, model_score_psi）
         """
-        self.evaluation = {}
         train_ks: float = KS(score=self.data_woe[self.data_woe[self.is_train]==1][self.score], target=self.data_woe[self.data_woe[self.is_train]==1][self.target])
         validation_ks: float = KS(score=self.data_woe[self.data_woe[self.is_train]==2][self.score], target=self.data_woe[self.data_woe[self.is_train]==2][self.target])
         oot_ks: float = KS(score=self.data_woe[self.data_woe[self.is_train]==0][self.score], target=self.data_woe[self.data_woe[self.is_train]==0][self.target])
         train_auc: float = AUC(score=self.data_woe[self.data_woe[self.is_train]==1][self.score], target=self.data_woe[self.data_woe[self.is_train]==1][self.target]) # type: ignore
         validation_auc: float = AUC(score=self.data_woe[self.data_woe[self.is_train]==2][self.score], target=self.data_woe[self.data_woe[self.is_train]==2][self.target]) # type: ignore
         oot_auc: float = AUC(score=self.data_woe[self.data_woe[self.is_train]==0][self.score], target=self.data_woe[self.data_woe[self.is_train]==0][self.target]) # type: ignore
-        self.evaluation["train_ks"] = train_ks
-        self.evaluation["validation_ks"] = validation_ks
-        self.evaluation["oot_ks"] = oot_ks
-        self.evaluation["train_auc"] = train_auc
-        self.evaluation["validation_auc"] = validation_auc
-        self.evaluation["oot_auc"] = oot_auc
-        self.evaluation["model_psi"] = self.calculate_model_score_psi(n_bins=n_bins)
+        model_psi: float = self.calculate_model_score_psi(n_bins=n_bins)
+        self.evaluation = {
+            "train_ks": train_ks,
+            "validation_ks": validation_ks,
+            "oot_ks": oot_ks,
+            "train_auc": train_auc,
+            "validation_auc": validation_auc,
+            "oot_auc": oot_auc,
+            "model_psi": model_psi
+        }
         return self.evaluation
     
     # @override
@@ -444,7 +447,7 @@ class AutomatedScoreCard(AutomatedModeling):
         used_features: List[str] = self.stepwise_after_woe_transformer(selected_features=selected_features, estimator=estimator, direction=direction, criterion=criterion) # 逐步回顾确定最终的入模变量
         print(f"经逐步回归确定入模变量共 {len(used_features)} 个，分别是 {used_features}")
         self.fit(used_features=used_features, model_score=model_score) # 拟合评分卡
-        evaluation: Dict[str, float] = self.evaluate(n_bins=n_bins) # 模型评价指标
+        evaluation: AutomatedModeling.Evaluation = self.evaluate(n_bins=n_bins) # 模型评价指标
         print(f"训练集上 KS 值为：{evaluation['train_ks']}，AUC 值为：{evaluation['train_auc']}；验证集上 KS 值为：{evaluation['validation_ks']}，AUC 值为 {evaluation['validation_auc']}；测试集上 KS 值为：{evaluation['oot_ks']}，AUC 值为 {evaluation['oot_auc']}；模型分的 PSI 为 {evaluation['model_psi']}")
 
     def get_feature_bin_score(self) -> Dict[str, Dict[str, float]]:
@@ -454,7 +457,8 @@ class AutomatedScoreCard(AutomatedModeling):
             Dict[str, Dict[str, float]]: 入模特征各个区间段到评分的映射
         """
         return self.bins_score
-    
+
+    # @override    
     def export_model(self, path: str) -> None:
         """将模型以二进制导出为 pkl 格式
 
@@ -463,6 +467,24 @@ class AutomatedScoreCard(AutomatedModeling):
         """
         with open(file=path, mode="wb") as f:
             dump(obj=self.model, file=f)
+    
+    # @override
+    def generate_yaml(self, model_file: str, model_name: str) -> None:
+        """生成模型配置的标准 yaml 文件
+
+        Args:
+            model_file (str): 序列化后的模型文件路径
+            model_name (str): 模型名称
+        """
+        MLModel(
+            model_file=model_file,
+            dataframe=self.data[self.used_features],
+            model_type="toad",
+            model_name=model_name,
+            yname=self.target,
+            serializer="pickle",
+            objective="binary"
+        )
 
     def get_binning_rules(self, selected_features: List[str]) -> Dict[str, List[float]]:
         """查看潜在入模变量或其子集当前的分箱切割点
