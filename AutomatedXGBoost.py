@@ -409,12 +409,14 @@ class AutomatedXGBoost(AutomatedModeling):
             model_file (str): 序列化后的模型文件路径
             model_name (str): 模型名称
         """
-        MLModel(
-            model_file=model_file,
-            dataframe=self.data[self.used_features],
-            model_type="xgboost",
-            model_name=model_name,
-            yname=self.target,
-            serializer="pickle",
-            objective="binary"
-        )
+        mlModel: MLModel = MLModel(
+                                    model_file=model_file,
+                                    dataframe=self.data[self.used_features],
+                                    model_type="xgboost",
+                                    model_name=model_name,
+                                    yname=self.target,
+                                    serializer="pickle",
+                                    objective="binary"
+                                )
+        mlModel.update_score_card_info(pdo=20, rate=2, base_odds=1.22, base_score=600)
+        mlModel.save(name="MLmodel")
