@@ -1,16 +1,27 @@
-from typing import List, Dict
+from typing import List, TypedDict
 from abc import ABC, abstractmethod
 from datetime import date
 from random import seed
 from math import log
 
 import pandas as pd
-from pandas.core.frame import DataFrame
-from pandas.core.series import Series
+from pandas import DataFrame, Series
 
 
 class AutomatedModeling(ABC):
     seed(a=42) # 固定随机种子
+    Evaluation = TypedDict(
+        "Evaluation",
+        {
+            "train_ks": float,
+            "validation_ks": float,
+            "oot_ks": float,
+            "train_auc": float,
+            "validation_auc": float,
+            "oot_auc": float,
+            "model_psi": float
+        }
+    )
 
     def __init__(self, data: DataFrame, target: str, time: str, not_features: List[str]) -> None:
         """传入规定格式的数据以实例化 AutomatedModeling 对象
@@ -31,7 +42,7 @@ class AutomatedModeling(ABC):
         self.validation: DataFrame
         self.oot: DataFrame
         self.used_features: List[str] # 最终入模特征
-        self.evaluation: Dict[str, float]
+        self.evaluation: AutomatedModeling.Evaluation
         self.score: str # 模型分字段
 
     def split_train_oot(self, split_time: date, split_validation_set: bool = False, validation_pct: float = 0.2) -> None:
@@ -104,14 +115,14 @@ class AutomatedModeling(ABC):
         pass
 
     @abstractmethod
-    def evaluate(self, n_bins: int) -> Dict[str, float]:
+    def evaluate(self, n_bins: int) -> Evaluation:
         """模型评估
 
         Args:
             n_bins (int, optional): 计算模型分 PSI 时的分箱个数
 
         Returns:
-            Dict[str, float]:  模型的量化指标（KS, AUC, model_score_psi）
+            Evaluation:  模型的量化指标（KS, AUC, model_score_psi）
         """
         pass
 
@@ -181,3 +192,14 @@ class AutomatedModeling(ABC):
             path (str): 导出路径
         """
         pass
+
+    @abstractmethod
+    def generate_yaml(self, model_file: str, model_name: str) -> None:
+        """生成模型配置的标准 yaml 文件
+
+        Args:
+            model_file (str): 序列化后的模型文件路径
+            model_name (str): 模型名称
+        """
+        pass
+    
