@@ -6,16 +6,14 @@ import warnings
 from toad import quality
 from toad.metrics import KS, KS_bucket, PSI, AUC
 import xgboost as xgb
-from xgboost import DMatrix
-from xgboost.core import Booster
-from xgboost import plot_importance, plot_tree
+from xgboost import DMatrix, Booster, plot_importance, plot_tree
 import pandas as pd
-from pandas.core.frame import DataFrame
-from pandas.core.series import Series
+from pandas import DataFrame, Series
 from matplotlib import pyplot as plt
 from seaborn import histplot 
 
 from AutomatedModeling import AutomatedModeling
+from MLModel import MLModel
 
 
 warnings.filterwarnings(action="ignore") # 忽略所有警告
@@ -183,7 +181,7 @@ class AutomatedXGBoost(AutomatedModeling):
         print(f"从稳定性较好的变量中再剔除 iv 值较低的变量后剩余 {len(selected_features)} 个变量，分别是 {selected_features}")
         self.fit(latent_features=selected_features, model_score=model_score, num_boost_round=num_boost_round, **params) # 拟合 XGB
         print(f"最终的入模变量共 {len(self.used_features)} 个，分别是 {self.used_features}")
-        evaluation: Dict[str, float] = self.evaluate(n_bins=n_bins) # 模型评价指标
+        evaluation: AutomatedModeling.Evaluation = self.evaluate(n_bins=n_bins) # 模型评价指标
         print(f"训练集上 KS 值为：{evaluation['train_ks']}，AUC 值为：{evaluation['train_auc']}；验证集上 KS 值为：{evaluation['validation_ks']}，AUC 值为 {evaluation['validation_auc']}；测试集上 KS 值为：{evaluation['oot_ks']}，AUC 值为 {evaluation['oot_auc']}；模型分的 PSI 为 {evaluation['model_psi']}")
 
     # @override
@@ -202,29 +200,31 @@ class AutomatedXGBoost(AutomatedModeling):
         return result
     
     # @override
-    def evaluate(self, n_bins: int = 50) -> Dict[str, float]:
+    def evaluate(self, n_bins: int = 50) -> AutomatedModeling.Evaluation:
         """模型评估
 
         Args:
             n_bins (int, optional): 计算模型分 PSI 时的分箱个数. Defaults to 50.
 
         Returns:
-            Dict[str, float]:  模型的量化指标（KS, AUC, model_score_psi）
+            AutomatedModeling.Evaluation:  模型的量化指标（KS, AUC, model_score_psi）
         """
-        self.evaluation = {}
         train_ks: float = KS(score=self.data[self.data[self.is_train]==1][self.score], target=self.data[self.data[self.is_train]==1][self.target])
         validation_ks: float = KS(score=self.data[self.data[self.is_train]==2][self.score], target=self.data[self.data[self.is_train]==2][self.target])
         oot_ks: float = KS(score=self.data[self.data[self.is_train]==0][self.score], target=self.data[self.data[self.is_train]==0][self.target])
         train_auc: float = AUC(score=self.data[self.data[self.is_train]==1][self.score], target=self.data[self.data[self.is_train]==1][self.target]) # type: ignore
         validation_auc: float = AUC(score=self.data[self.data[self.is_train]==2][self.score], target=self.data[self.data[self.is_train]==2][self.target]) # type: ignore
         oot_auc: float = AUC(score=self.data[self.data[self.is_train]==0][self.score], target=self.data[self.data[self.is_train]==0][self.target]) # type: ignore
-        self.evaluation["train_ks"] = train_ks
-        self.evaluation["validation_ks"] = validation_ks
-        self.evaluation["oot_ks"] = oot_ks
-        self.evaluation["train_auc"] = train_auc
-        self.evaluation["validation_auc"] = validation_auc
-        self.evaluation["oot_auc"] = oot_auc
-        self.evaluation["model_psi"] = self.calculate_model_score_psi(n_bins=n_bins)
+        model_psi: float = self.calculate_model_score_psi(n_bins=n_bins)
+        self.evaluation = {
+            "train_ks": train_ks,
+            "validation_ks": validation_ks,
+            "oot_ks": oot_ks,
+            "train_auc": train_auc,
+            "validation_auc": validation_auc,
+            "oot_auc": oot_auc,
+            "model_psi": model_psi
+        }
         return self.evaluation
     
     # @override
@@ -400,3 +400,21 @@ class AutomatedXGBoost(AutomatedModeling):
         """
         with open(file=path, mode="wb") as f:
             dump(obj=self.model, file=f)
+
+    # @override
+    def generate_yaml(self, model_file: str, model_name: str) -> None:
+        """生成模型配置的标准 yaml 文件
+
+        Args:
+            model_file (str): 序列化后的模型文件路径
+            model_name (str): 模型名称
+        """
+        MLModel(
+            model_file=model_file,
+            dataframe=self.data[self.used_features],
+            model_type="xgboost",
+            model_name=model_name,
+            yname=self.target,
+            serializer="pickle",
+            objective="binary"
+        )
